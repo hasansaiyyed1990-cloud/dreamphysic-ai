@@ -1,0 +1,31 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Backend
+backend/target/
+backend/*.jar
+*.class
+*.log
+.idea/
+*.iml
+.mvn/
+mvnw
+mvnw.cmd
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+*.swp
+*.swo
+*~
