@@ -9,7 +9,10 @@ import java.util.List;
 @Component @ConditionalOnProperty(name="fitforge.seed-library",havingValue="true",matchIfMissing=true) public class ExerciseLibrarySeeder implements CommandLineRunner {
     private final ExerciseLibraryRepository repository;
     public ExerciseLibrarySeeder(ExerciseLibraryRepository repository){this.repository=repository;}
-    @Override @Transactional public void run(String... args){
+    @Override public void run(String... args){
+        try{seed();}catch(Exception e){org.slf4j.LoggerFactory.getLogger(ExerciseLibrarySeeder.class).error("Exercise guide seeding failed; continuing startup",e);}
+    }
+    private void seed(){
         var items=List.of(
                 guide("Barbell Back Squat","Legs","Barbell, rack","Set the bar across the upper back and stand shoulder-width.","Brace the trunk and keep the whole foot planted.","Sit between the hips, descend under control, then drive up through the floor.","Knees collapsing inward; heels lifting; losing a neutral trunk."),
                 guide("Push-Up","Chest","Bodyweight","Hands just outside shoulder width; body in a straight line.","Brace glutes and abdomen; keep the neck neutral.","Lower chest between hands, then press to full elbow extension.","Hips sagging or piking; elbows flared straight out; partial range."),

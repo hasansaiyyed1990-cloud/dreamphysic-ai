@@ -13,6 +13,7 @@ import java.util.stream.Collectors;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+    private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(ApiExceptionHandler.class);
     @ExceptionHandler(MethodArgumentNotValidException.class)
     ResponseEntity<ApiResponse<Map<String, String>>> validation(MethodArgumentNotValidException ex) {
         var errors = ex.getBindingResult().getFieldErrors().stream().collect(Collectors.toMap(
@@ -54,8 +55,42 @@ public class ApiExceptionHandler {
                 .body(ApiResponse.error("AI service timed out; please retry shortly"));
     }
 
+    @ExceptionHandler({org.springframework.http.converter.HttpMessageNotReadableException.class,
+            org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class,
+            org.springframework.web.bind.MissingServletRequestParameterException.class,
+            jakarta.validation.ConstraintViolationException.class})
+    ResponseEntity<ApiResponse<Void>> malformed(Exception ex) {
+        return ResponseEntity.badRequest().body(ApiResponse.error("Malformed or invalid request"));
+    }
+
+    @ExceptionHandler(org.springframework.web.HttpRequestMethodNotSupportedException.class)
+    ResponseEntity<ApiResponse<Void>> method(Exception ex) {
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).body(ApiResponse.error("Method not allowed"));
+    }
+
+    @ExceptionHandler({org.springframework.web.servlet.resource.NoResourceFoundException.class,
+            org.springframework.web.servlet.NoHandlerFoundException.class})
+    ResponseEntity<ApiResponse<Void>> notFound(Exception ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.error("Not found"));
+    }
+
+    @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
+    ResponseEntity<ApiResponse<Void>> integrity(org.springframework.dao.DataIntegrityViolationException ex) {
+        LOG.warn("Data integrity violation", ex);
+        boolean tooLong = String.valueOf(ex.getMostSpecificCause().getMessage()).contains("too long");
+        return ResponseEntity.status(tooLong ? HttpStatus.BAD_REQUEST : HttpStatus.CONFLICT)
+                .body(ApiResponse.error(tooLong ? "A text field is too long" : "Conflicts with existing data"));
+    }
+
+    @ExceptionHandler(org.hibernate.exception.DataException.class)
+    ResponseEntity<ApiResponse<Void>> dataException(org.hibernate.exception.DataException ex) {
+        LOG.warn("Invalid data", ex);
+        return ResponseEntity.badRequest().body(ApiResponse.error("A text field is too long or a value is out of range"));
+    }
+
     @ExceptionHandler(Exception.class)
     ResponseEntity<ApiResponse<Void>> unexpected(Exception ex) {
+        LOG.error("Unhandled exception", ex);
         return ResponseEntity.internalServerError().body(ApiResponse.error("Internal server error"));
     }
 }

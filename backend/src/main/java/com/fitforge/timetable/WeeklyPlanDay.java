@@ -9,7 +9,7 @@ public class WeeklyPlanDay {
     @Column(name="user_email",nullable=false,length=190) private String userEmail;
     @Enumerated(EnumType.STRING) @Column(name="day_of_week",nullable=false,length=10) private DayOfWeek dayOfWeek;
     @Column(nullable=false,length=100) private String focus;
-    @Column(length=2000) private String plan;
+    @Column(columnDefinition="text") private String plan;
     @Column(nullable=false) private boolean express20;
     protected WeeklyPlanDay(){}
     public WeeklyPlanDay(String email,DayOfWeek day,String focus,String plan,boolean express){this.userEmail=email;this.dayOfWeek=day;this.focus=focus;this.plan=plan;this.express20=express;}
