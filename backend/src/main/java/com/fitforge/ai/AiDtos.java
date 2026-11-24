@@ -1,13 +1,14 @@
 package com.fitforge.ai;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import com.fitforge.nutrition.NutritionModuleDtos;
 import java.util.List;
 import java.time.LocalDate;
 
 public final class AiDtos {
     private AiDtos(){}
-    public record MealScanRequest(@NotBlank String imageBase64,String mimeType,String prompt){}
+    public record MealScanRequest(@NotBlank @Size(max=14_000_000) String imageBase64,String mimeType,String prompt){}
     public record PromptRequest(@NotBlank String prompt){}
     public record MealItemAnalysis(String foodName,String estimatedServingSize,double quantityG,double calories,double proteinG,double carbsG,double fatG,double fiberG,int confidencePercent,String uncertaintyNote){}
     public record MealAnalysis(String name,int calories,double proteinG,double carbsG,double fatG,Double fiberG,String description,List<MealItemAnalysis> items,int confidencePercent,String uncertaintyNote){}
