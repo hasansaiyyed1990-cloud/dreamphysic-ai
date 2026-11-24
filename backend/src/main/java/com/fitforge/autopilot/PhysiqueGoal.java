@@ -6,11 +6,11 @@ public class PhysiqueGoal {
  @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Long id;
  @Column(name="user_email",nullable=false,length=190) private String userEmail;
  @Column(nullable=false,length=60) private String focus;
- @Column(nullable=false,length=500) private String goal;
+ @Column(nullable=false,columnDefinition="text") private String goal;
  @Column(length=80) private String measurement;
  private Double baseline; private Double target;
- @Column(name="linked_exercises",length=1000) private String linkedExercises;
- @Column(name="next_steps",length=2000) private String nextSteps;
+ @Column(name="linked_exercises",columnDefinition="text") private String linkedExercises;
+ @Column(name="next_steps",columnDefinition="text") private String nextSteps;
  @Column(nullable=false) private boolean active=true;
  @Column(name="created_at",nullable=false) private LocalDateTime createdAt=LocalDateTime.now();
  protected PhysiqueGoal(){}

@@ -8,8 +8,8 @@ public class PhysiqueCheckIn {
     @Column(name="user_email",nullable=false,length=190) private String userEmail;
     @Column(name="checkin_date",nullable=false) private LocalDate date;
     private Double weightKg;private Double waistCm;
-    @Column(length=1000) private String photoUrl;
-    @Column(length=2000) private String notes;
+    @Column(columnDefinition="text") private String photoUrl;
+    @Column(columnDefinition="text") private String notes;
     protected PhysiqueCheckIn(){}
     public PhysiqueCheckIn(String email,ProgressDtos.PhysiqueInput i){userEmail=email;date=i.date();weightKg=i.weightKg();waistCm=i.waistCm();photoUrl=i.photoUrl();notes=i.notes();}
     public Long getId(){return id;}public LocalDate getDate(){return date;}public Double getWeightKg(){return weightKg;}public Double getWaistCm(){return waistCm;}public String getPhotoUrl(){return photoUrl;}public String getNotes(){return notes;}
