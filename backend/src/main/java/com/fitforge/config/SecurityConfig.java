@@ -49,13 +49,15 @@ public class SecurityConfig {
 
     @Bean CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration c = new CorsConfiguration();
-        List<String> origins = Arrays.stream(allowedOrigins.split(",")).map(String::trim).filter(s -> !s.isBlank() && !s.equals("*")).toList();
-        c.setAllowedOrigins(origins);
-        c.setAllowedOriginPatterns(Arrays.stream(allowedOrigins.split(",")).map(String::trim).filter(s -> s.equals("*")).toList());
+        List<String> all = Arrays.stream(allowedOrigins.split(",")).map(String::trim).filter(x -> !x.isBlank()).map(x -> x.endsWith("/") ? x.substring(0, x.length() - 1) : x).toList();
+        c.setAllowedOrigins(all.stream().filter(x -> !x.contains("*")).toList());
+        c.setAllowedOriginPatterns(all.stream().filter(x -> x.contains("*")).toList());
         c.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        c.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept"));
+        c.setAllowedHeaders(List.of("*"));
         c.setExposedHeaders(List.of("Authorization"));
-        c.setAllowCredentials(true);
+        c.setMaxAge(3600L);
+        // Auth is a bearer token header, not cookies, so credentials are not needed (and a wildcard origin with credentials would be unsafe).
+        c.setAllowCredentials(false);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", c);
         return source;
