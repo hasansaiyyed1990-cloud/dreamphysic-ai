@@ -1,0 +1,9 @@
+package com.fitforge.common;
+import com.fitforge.cardio.CardioService;import com.fitforge.nutrition.*;import com.fitforge.progress.*;import com.fitforge.workout.WorkoutService;import org.springframework.security.core.Authentication;import org.springframework.web.bind.annotation.*;import java.time.*;import java.util.*;
+@RestController @RequestMapping("/api/analytics")
+public class AnalyticsController{
+ private final WeightRepository weights;private final NutritionModuleService nutrition;private final WorkoutService workouts;private final CardioService cardio;
+ public AnalyticsController(WeightRepository weights,NutritionModuleService nutrition,WorkoutService workouts,CardioService cardio){this.weights=weights;this.nutrition=nutrition;this.workouts=workouts;this.cardio=cardio;}
+ @GetMapping("/overview") public ApiResponse<AnalyticsDtos.Overview> overview(Authentication a){String email=a.getName();LocalDate to=LocalDate.now(),from=to.minusDays(89);var raw=weights.findByUserEmailAndDateBetweenOrderByDateAsc(email,from,to);List<AnalyticsDtos.RollingWeight> trend=new ArrayList<>();for(var w:raw){LocalDate low=w.getDate().minusDays(6);double avg=raw.stream().filter(x->!x.getDate().isBefore(low)&&!x.getDate().isAfter(w.getDate())).mapToDouble(WeightEntry::getWeightKg).average().orElse(w.getWeightKg());trend.add(new AnalyticsDtos.RollingWeight(w.getDate(),w.getWeightKg(),avg));}
+  var nutrition90=nutrition.analytics(email,90,from,to);var weekly=nutrition.analytics(email,7,to.minusDays(6),to);List<Double> weekCalories=weekly.dailyBreakdown().stream().map(NutritionModuleDtos.DailyAnalytics::calories).toList();var backlog=nutrition.backlog(email);return ApiResponse.ok(new AnalyticsDtos.Overview(from,to,trend,nutrition90.dailyBreakdown(),weekCalories,backlog.history(),nutrition.deadlineHistory(email),workouts.prs(email),cardio.list(email),cardio.goals(email),nutrition90.consistencyScore()));}
+}

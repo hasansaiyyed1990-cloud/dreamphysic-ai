@@ -1,0 +1,30 @@
+{
+  "sourceNotes": ["User-specified Compendium of Physical Activities MET constants; MET estimates gross energy and vary by pace, terrain, fitness, and technique."],
+  "calorieFormula": "kcal = MET * weightKg * (minutes / 60.0)",
+  "metValues": [
+    {"activity":"Indoor Apartment Jogging","met":7.0}, {"activity":"Brisk Walking","met":4.3},
+    {"activity":"Stair Climbing","met":8.0}, {"activity":"Shadow Boxing / Conditioning","met":7.8},
+    {"activity":"Jump Rope / Shadow Skip","met":10.0}, {"activity":"Cycling","met":6.8},
+    {"activity":"Strength Training","met":5.0}
+  ],
+  "heartRate": {
+    "estimatedMaxFormula":"220 - ageYears (population estimate; individual error is substantial)",
+    "karvonenFormula":"targetHR = restingHR + intensityFraction * (estimatedMaxHR - restingHR)",
+    "zones":[
+      {"zone":"Zone 2","percentHRR":[60,70],"cue":"Conversational aerobic effort; useful for aerobic base and mitochondrial adaptation."},
+      {"zone":"Zone 3","percentHRR":[70,80],"cue":"Controlled tempo; short phrases remain possible."},
+      {"zone":"Zone 4/5","percentHRR":[80,100],"cue":"Hard to maximal VO2-oriented intervals; use sparingly with recovery."}
+    ],
+    "polarizedModel":"Approximate 80% of endurance time easy/Zone 1-2 and 20% moderate-hard; distribution is a planning heuristic, not a rule for every beginner.",
+    "breathing":"A 3:2 footstep breathing rhythm can be tried at easy pace; switch to natural breathing if uncomfortable."
+  },
+  "roadmaps": {
+    "zeroTo3K":["Week 1: 3 x 20-25 min walk/jog; jog 1 min, walk 2 min.","Week 2: 3 x 25 min; jog 2 min, walk 2 min.","Week 3: 3 x 25-30 min; jog 3 min, walk 90 sec.","Week 4: 3 easy sessions; build one continuous easy jog toward 3 km, repeat a week if needed."],
+    "3KTo5K":["Weeks 1-2: 3 easy runs; extend one run by 0.5-1 km weekly.","Weeks 3-4: keep two easy runs and one short controlled tempo block (3 x 5 min).","Weeks 5-6: long easy run reaches 4-5 km; cut volume before an attempt."],
+    "5KTo10K":["Weeks 1-2: 3 runs; easy volume increases at most about 5-10% if recovery is good.","Weeks 3-4: one easy long run, one conversational run, one light interval/tempo session.","Weeks 5-6: extend long run toward 7-8 km; preserve easy effort.","Weeks 7-8: reach 8-10 km comfortably, then taper before a timed effort."],
+    "continuousBlocks":[{"minutes":15,"sessionsPerWeek":3,"progression":"Begin with easy run-walk until continuous."},{"minutes":30,"sessionsPerWeek":3,"progression":"Add 3-5 minutes to one easy session weekly."},{"minutes":45,"sessionsPerWeek":3,"progression":"Keep two easy days; extend the long day gradually."},{"minutes":60,"sessionsPerWeek":3,"progression":"Only after 45 minutes is comfortable; avoid adding speed and duration together."}],
+    "formCues":{"cadenceSpm":[165,175],"note":"Use 165-175 steps/min only as an optional cue; natural cadence varies with height and pace. Do not force cadence."},
+    "pace":"min/km = durationMinutes / distanceKm; use conversational effort on easy sessions rather than a fabricated pace target."
+  },
+  "fatLossAndCardio":"A moderate fat-loss pace is commonly around 0.5-0.8 kg/week for larger adults; adjust to body size, health, and recovery. Place demanding cardio away from heavy lifting when it harms strength; easy cardio after lifting or on separate days is acceptable. Track NEAT (steps and routine movement) consistently. Metabolic adaptation is managed with adherence review, sleep, and small adjustments—not crash dieting."
+}

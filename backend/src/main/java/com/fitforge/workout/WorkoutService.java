@@ -4,11 +4,18 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.ArrayList;
+import java.time.LocalDateTime;
+import java.time.LocalDate;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Service public class WorkoutService {
-    private final WorkoutSessionRepository sessions;private final WorkoutSetRepository sets;private final ExerciseLibraryRepository library;private final PushUpRepository pushups;
-    public WorkoutService(WorkoutSessionRepository sessions,WorkoutSetRepository sets,ExerciseLibraryRepository library,PushUpRepository pushups){this.sessions=sessions;this.sets=sets;this.library=library;this.pushups=pushups;}
-    public List<WorkoutDtos.ExerciseGuide> library(){return library.findAllByOrderByMuscleGroupAscNameAsc().stream().map(this::guide).toList();}
+    private final WorkoutSessionRepository sessions;private final WorkoutSetRepository sets;private final ExerciseLibraryRepository library;private final PushUpRepository pushups;private final ExerciseGoalRepository goals;private final ObjectMapper mapper;
+    public WorkoutService(WorkoutSessionRepository sessions,WorkoutSetRepository sets,ExerciseLibraryRepository library,PushUpRepository pushups,ExerciseGoalRepository goals,ObjectMapper mapper){this.sessions=sessions;this.sets=sets;this.library=library;this.pushups=pushups;this.goals=goals;this.mapper=mapper;}
+    public List<WorkoutDtos.ExerciseGuide> library(){return library(null,null,null);}
+    public List<WorkoutDtos.ExerciseGuide> library(String muscle,String search,String equipment){String m=norm(muscle),q=norm(search),eq=norm(equipment);return library.findAllByOrderByMuscleGroupAscNameAsc().stream().filter(e->m.isBlank()||contains(e.getMuscleGroup(),m)||contains(e.getPrimaryMusclesJson(),m)||contains(e.getSecondaryMusclesJson(),m)).filter(e->q.isBlank()||contains(e.getName(),q)||contains(e.getPrimaryMusclesJson(),q)||contains(e.getSecondaryMusclesJson(),q)).filter(e->eq.isBlank()||contains(e.getEquipment(),eq)).map(this::guide).toList();}
     @Transactional public WorkoutDtos.ExerciseGuide addGuide(WorkoutDtos.ExerciseGuideInput i){return guide(library.save(new ExerciseLibraryItem(i)));}
     @Transactional(readOnly=true) public List<WorkoutDtos.Session> sessions(String email){return sessions.findByUserEmailOrderBySessionDateDesc(email).stream().map(this::session).toList();}
     @Transactional public WorkoutDtos.Session create(String email,WorkoutDtos.SessionInput i){return session(sessions.save(new WorkoutSession(email,i)));}
@@ -19,7 +26,15 @@ import java.util.LinkedHashMap;
     @Transactional public WorkoutDtos.PushUp addPushUp(String email,WorkoutDtos.PushUpInput i){return pushup(pushups.save(new PushUpLog(email,i)));}
     public List<WorkoutDtos.PushUp> pushups(String email){return pushups.findByUserEmailOrderByPerformedAtDesc(email).stream().map(this::pushup).toList();}
     public List<WorkoutDtos.PersonalRecord> prs(String email){var best=new LinkedHashMap<String,WorkoutSet>();for(var row:sets.findByUserEmailOrderByExerciseNameAscWeightKgDescWorkoutDateDesc(email))best.putIfAbsent(row.getExerciseName().toLowerCase(java.util.Locale.ROOT),row);return best.values().stream().map(s->new WorkoutDtos.PersonalRecord(s.getExerciseName(),s.getWeightKg(),s.getReps(),s.getWorkoutDate())).toList();}
-    private WorkoutDtos.ExerciseGuide guide(ExerciseLibraryItem e){return new WorkoutDtos.ExerciseGuide(e.getId(),e.getName(),e.getMuscleGroup(),e.getEquipment(),e.getSetup(),e.getBrace(),e.getExecution(),e.getCommonMistakes());}
+    @Transactional public WorkoutDtos.ExerciseProgress putGoal(String email,WorkoutDtos.ExerciseGoalInput i){var goal=goals.findByUserEmailAndExerciseNameIgnoreCase(email,i.exerciseName()).orElseGet(()->new ExerciseGoal(email,i));goal.update(i);return progress(goal);}
+    @Transactional(readOnly=true) public List<WorkoutDtos.ExerciseProgress> goals(String email){return goals.findByUserEmailOrderByExerciseNameAsc(email).stream().map(this::progress).toList();}
+    private WorkoutDtos.ExerciseProgress progress(ExerciseGoal goal){var rows=sets.sessionsForExercise(goal.getUserEmail(),goal.getExerciseName());var grouped=new LinkedHashMap<LocalDateTime,List<WorkoutSet>>();for(var row:rows)grouped.computeIfAbsent(row.getWorkoutDate(),k->new ArrayList<>()).add(row);var sessions=new ArrayList<>(grouped.values());Metric current=sessions.isEmpty()?Metric.EMPTY:metric(sessions.get(0));Metric previous=sessions.size()<2?Metric.EMPTY:metric(sessions.get(1));int stagnant=0;for(int i=0;i<sessions.size()-1;i++){Metric newer=metric(sessions.get(i)),older=metric(sessions.get(i+1));if(newer.weight<=older.weight&&newer.reps<=older.reps&&newer.volume<=older.volume)stagnant++;else break;}boolean met=sessions.stream().findFirst().orElse(List.of()).stream().anyMatch(s->s.getWeightKg()>=goal.getTargetWeightKg()&&s.getReps()>=goal.getTargetReps());boolean missed=LocalDate.now().isAfter(goal.getDeadlineDate())&&!met;long late=missed?java.time.temporal.ChronoUnit.DAYS.between(goal.getDeadlineDate(),LocalDate.now()):0;boolean plateau=stagnant>=2;String advice=plateau?"Plateau across at least 2 sessions: review technique, sleep and load; consider a light deload week before progressing.":missed?"Target deadline passed; revise the target or deadline based on current logs. Do not force jumps in load.":"Keep form consistent and increase load only after all prescribed reps are achieved cleanly.";return new WorkoutDtos.ExerciseProgress(goal.getId(),goal.getExerciseName(),goal.getTargetWeightKg(),goal.getTargetReps(),goal.getDeadlineDate(),previous.weight,previous.reps,previous.volume,current.weight,current.reps,current.volume,stagnant,plateau,met,missed,late,advice);}
+    private Metric metric(List<WorkoutSet> rows){double weight=rows.stream().mapToDouble(WorkoutSet::getWeightKg).max().orElse(0),volume=rows.stream().mapToDouble(s->s.getWeightKg()*s.getReps()).sum();int reps=rows.stream().mapToInt(WorkoutSet::getReps).max().orElse(0);return new Metric(weight,reps,volume);}
+    private record Metric(double weight,int reps,double volume){static final Metric EMPTY=new Metric(0,0,0);}
+    private WorkoutDtos.ExerciseGuide guide(ExerciseLibraryItem e){return new WorkoutDtos.ExerciseGuide(e.getId(),e.getName(),e.getMuscleGroup(),e.getEquipment(),e.getSetup(),e.getBrace(),e.getExecution(),e.getCommonMistakes(),list(e.getPrimaryMusclesJson()),list(e.getSecondaryMusclesJson()),e.getLevel(),list(e.getInstructionsJson()),list(e.getImageUrlsJson()),e.getSource());}
+    private List<String> list(String s){try{return s==null?List.of():mapper.readValue(s,new TypeReference<List<String>>(){});}catch(Exception e){return List.of();}}
+    private boolean contains(String value,String q){return value!=null&&value.toLowerCase(java.util.Locale.ROOT).contains(q);}
+    private String norm(String s){return s==null?"":s.trim().toLowerCase(java.util.Locale.ROOT);}
     private WorkoutDtos.Session session(WorkoutSession e){return new WorkoutDtos.Session(e.getId(),e.getName(),e.getSessionDate(),e.getSets().stream().map(this::set).toList());}
     private WorkoutDtos.SetEntry set(WorkoutSet e){return new WorkoutDtos.SetEntry(e.getId(),e.getExerciseName(),e.getSetNumber(),e.getReps(),e.getWeightKg(),e.getPreviousWeightKg(),e.getDeltaKg(),e.getRestSeconds(),e.getWorkoutDate());}
     private WorkoutDtos.PushUp pushup(PushUpLog e){return new WorkoutDtos.PushUp(e.getId(),e.getRepetitions(),e.getVariation(),e.getDurationSeconds(),e.getPerformedAt(),e.getNotes());}

@@ -1,0 +1,7 @@
+package com.fitforge.workout;
+import jakarta.persistence.*; import java.time.LocalDate;
+@Entity @Table(name="exercise_goals",uniqueConstraints=@UniqueConstraint(name="uk_exercise_goal_owner_name",columnNames={"user_email","exercise_name"}),indexes=@Index(name="idx_exercise_goal_owner",columnList="user_email"))
+public class ExerciseGoal {
+ @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Long id; @Column(name="user_email",nullable=false,length=190) private String userEmail; @Column(name="exercise_name",nullable=false,length=160) private String exerciseName; @Column(name="target_weight_kg",nullable=false) private double targetWeightKg; @Column(name="target_reps",nullable=false) private int targetReps; @Column(name="deadline_date",nullable=false) private LocalDate deadlineDate;
+ protected ExerciseGoal(){} public ExerciseGoal(String email,WorkoutDtos.ExerciseGoalInput i){userEmail=email;update(i);}public void update(WorkoutDtos.ExerciseGoalInput i){exerciseName=i.exerciseName().trim();targetWeightKg=i.targetWeightKg();targetReps=i.targetReps();deadlineDate=i.deadlineDate();} public Long getId(){return id;}public String getUserEmail(){return userEmail;}public String getExerciseName(){return exerciseName;}public double getTargetWeightKg(){return targetWeightKg;}public int getTargetReps(){return targetReps;}public LocalDate getDeadlineDate(){return deadlineDate;}
+}

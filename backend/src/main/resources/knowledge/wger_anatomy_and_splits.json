@@ -1,0 +1,19 @@
+{
+  "source":"wger-project/wger muscle fixtures and exercise taxonomy; routine structures are Dream Physic AI templates, not official medical prescriptions.",
+  "muscles":[
+    {"group":"Back Width","muscles":["latissimus dorsi (upper/lower regions)","teres major"],"actions":["shoulder adduction","shoulder extension"],"focus":"Vertical pulls and rows with elbows tracking toward hips; use full controlled overhead reach."},
+    {"group":"Back Thickness","muscles":["rhomboids","middle trapezius","lower trapezius","rear deltoids","erector spinae"],"actions":["scapular retraction","scapular depression","trunk extension/isometric bracing"],"focus":"Supported rows, controlled scapular motion, and hinges with neutral trunk."},
+    {"group":"Chest","muscles":["pectoralis major","anterior deltoid","triceps brachii"],"focus":"Horizontal presses and push-ups with controlled shoulder position."},
+    {"group":"Shoulders","muscles":["anterior deltoid","lateral deltoid","posterior deltoid","trapezius"],"focus":"Presses, lateral raises, and rear-delt work across comfortable ranges."},
+    {"group":"Arms","muscles":["biceps brachii","brachialis","triceps brachii"],"focus":"Elbow flexion and extension variations; keep upper arm stable."},
+    {"group":"Legs","muscles":["quadriceps femoris","hamstrings","gluteus maximus","gastrocnemius","soleus"],"focus":"Squat/lunge, hinge, hip extension, and calf raise patterns."},
+    {"group":"Core","muscles":["rectus abdominis","obliques","erector spinae"],"focus":"Bracing, anti-extension, anti-rotation, and controlled trunk motion."}
+  ],
+  "programs":[
+    {"name":"Push Pull Legs","daysPerWeek":6,"days":[{"day":"Push A","focus":["chest","shoulders","triceps"]},{"day":"Pull A","focus":["back width","back thickness","biceps"]},{"day":"Legs A","focus":["quads","hamstrings","glutes","calves"]},{"day":"Rest","focus":[]},{"day":"Push B","focus":["chest","shoulders","triceps"]},{"day":"Pull B","focus":["back width","back thickness","biceps"]},{"day":"Legs B","focus":["legs","core"]}],"beginnerNote":"Beginners can run this as 3 days/week rotating sessions instead of training six days."},
+    {"name":"Upper Lower","daysPerWeek":4,"days":[{"day":"Upper A","focus":["chest","back width","back thickness","shoulders","arms"]},{"day":"Lower A","focus":["quads","hamstrings","glutes","core"]},{"day":"Rest","focus":[]},{"day":"Upper B","focus":["chest","back","shoulders","arms"]},{"day":"Lower B","focus":["legs","calves","core"]}]},
+    {"name":"Bro Split","daysPerWeek":5,"days":[{"day":"Chest","focus":["chest","triceps"]},{"day":"Back","focus":["back width","back thickness","biceps"]},{"day":"Shoulders","focus":["deltoids","traps"]},{"day":"Legs","focus":["quads","hamstrings","glutes","calves"]},{"day":"Arms and Core","focus":["biceps","triceps","core"]}],"beginnerNote":"Use moderate sets; avoid placing all weekly volume into one session if recovery or schedule is poor."},
+    {"name":"Full Body","daysPerWeek":3,"days":[{"day":"A","focus":["squat","horizontal push","row","core"]},{"day":"B","focus":["hinge","vertical push","vertical pull","single-leg"]},{"day":"C","focus":["squat variation","press variation","row variation","arms"]}]},
+    {"name":"2-Day Back Width + Thickness","daysPerWeek":2,"days":[{"day":"Back A - Width","focus":["lat pulldown or assisted pull-up","single-arm cable pulldown","straight-arm pulldown","rear delts"]},{"day":"Back B - Thickness","focus":["chest-supported row","seated cable row","face pull","back extension or hip hinge"]}],"volumeGuide":"Start with 2-3 sets per movement and 2-3 RIR; progress reps before load."}
+  ]
+}

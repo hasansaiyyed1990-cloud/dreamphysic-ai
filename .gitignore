@@ -6,6 +6,8 @@
 # Backend
 backend/target/
 backend/*.jar
+backend/data/
+backend/start-neon.ps1
 *.class
 *.log
 .idea/

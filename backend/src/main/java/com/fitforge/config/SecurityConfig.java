@@ -25,7 +25,7 @@ import java.util.List;
 
 @Configuration
 public class SecurityConfig {
-    @Value("${app.cors.allowed-origins:http://localhost:5173,capacitor://localhost}")
+    @Value("${app.cors.allowed-origins:http://localhost:5173,capacitor://localhost,http://localhost,https://localhost}")
     private String allowedOrigins;
     private final JwtAuthFilter jwtAuthFilter;
     private final UserDetailsService userDetailsService;
@@ -47,7 +47,9 @@ public class SecurityConfig {
 
     @Bean CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration c = new CorsConfiguration();
-        c.setAllowedOrigins(Arrays.stream(allowedOrigins.split(",")).map(String::trim).toList());
+        List<String> origins = Arrays.stream(allowedOrigins.split(",")).map(String::trim).filter(s -> !s.isBlank() && !s.equals("*")).toList();
+        c.setAllowedOrigins(origins);
+        c.setAllowedOriginPatterns(Arrays.stream(allowedOrigins.split(",")).map(String::trim).filter(s -> s.equals("*")).toList());
         c.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         c.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept"));
         c.setExposedHeaders(List.of("Authorization"));

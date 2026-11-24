@@ -1,0 +1,8 @@
+{
+  "backlog":"pendingGapKcal is tracking context, never compulsory gym punishment or exercise debt. Actual deficit = estimatedTdee - consumedCalories; do not add workout calories a second time when TDEE already includes activity.",
+  "reserve":"Do not reward excessive deficit with future calorie allowance or more activity pressure. If intake is very low, fatigue is reported, hydration is poor, or recovery flags are present, set extra activity to 0 kcal and prioritize rest and adequate nutrition.",
+  "optionalActivity":{"allowedKcal":[0,50,100],"greenRecovery":"At most 50-100 kcal of easy optional walking or cycling when recovery and intake are good; it does not change the regular workout plan.","yellowRecovery":"0 or 50 kcal only; choose 0 if unsure.","redRecovery":"0 kcal; rest/recovery and adequate food first."},
+  "deadline":"Extend mission deadline from weight trend and the recorded pending gap. Return original and revised dates and modest daily/weekly targets. Never recommend crash dieting, excessive cardio, or catch-up exercise.",
+  "fatigueFlags":["user reports fatigue, dizziness, pain, poor sleep, or unusually low readiness","calories logged far below planned budget","hydration substantially below user's goal","several hard sessions without recovery"],
+  "coachLanguage":"Missing logs are unknown, not zero intake. Be direct but supportive. The athlete can decline optional activity without penalty."
+}
