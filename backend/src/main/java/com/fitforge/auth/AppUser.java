@@ -18,9 +18,24 @@ public class AppUser implements UserDetails {
     @Column(nullable = false) private int targetCalories = 1800;
     @Column(name = "token_version", nullable = false) private int tokenVersion = 0;
     @Column(nullable = false, updatable = false) private LocalDateTime createdAt = LocalDateTime.now();
+
+    // Optional metabolic profile; all nullable so existing accounts stay valid.
+    @Column(name = "height_cm") private Double heightCm;
+    @Column(name = "age_years") private Integer ageYears;
+    @Column(length = 20) private String gender;
+    @Column(name = "activity_level", length = 30) private String activityLevel;
+    @Column(name = "primary_goal", length = 40) private String primaryGoal;
+    @Column(name = "secondary_goal", length = 40) private String secondaryGoal;
+
     protected AppUser() {}
     public AppUser(String name, String email, String passwordHash) { this.name=name; this.email=email.toLowerCase(); this.passwordHash=passwordHash; }
     public Long getId(){return id;} public String getName(){return name;} public int getTargetCalories(){return targetCalories;}
+    public Double getHeightCm(){return heightCm;} public Integer getAgeYears(){return ageYears;} public String getGender(){return gender;}
+    public String getActivityLevel(){return activityLevel;} public String getPrimaryGoal(){return primaryGoal;} public String getSecondaryGoal(){return secondaryGoal;}
+    public void setMetabolicProfile(Double heightCm,Integer ageYears,String gender,String activityLevel){
+        this.heightCm=heightCm; this.ageYears=ageYears; this.gender=gender; this.activityLevel=activityLevel;
+    }
+    public void setGoals(String primaryGoal,String secondaryGoal){this.primaryGoal=primaryGoal; this.secondaryGoal=secondaryGoal;}
     public int getTokenVersion(){return tokenVersion;}
     public void incrementTokenVersion(){this.tokenVersion++;}
     public void setPasswordHash(String passwordHash){this.passwordHash=passwordHash;}

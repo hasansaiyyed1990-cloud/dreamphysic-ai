@@ -14,7 +14,7 @@ import java.util.List;
     @GetMapping("/library") public ApiResponse<List<WorkoutDtos.ExerciseGuide>> library(@RequestParam(defaultValue="") String muscle,@RequestParam(defaultValue="") String search,@RequestParam(defaultValue="") String equipment){return ApiResponse.ok(service.library(muscle,search,equipment));}
     @GetMapping("/programs") public ApiResponse<List<JsonNode>> programs(){return ApiResponse.ok(fitnessKnowledge.programs());}
     @PostMapping("/library") public ApiResponse<WorkoutDtos.ExerciseGuide> addGuide(@Valid @RequestBody WorkoutDtos.ExerciseGuideInput i){return ApiResponse.ok(service.addGuide(i));}
-    @GetMapping public ApiResponse<List<WorkoutDtos.Session>> sessions(Authentication a){return ApiResponse.ok(service.sessions(a.getName()));}
+    @GetMapping public ApiResponse<List<WorkoutDtos.Session>> sessions(Authentication a,@RequestParam(required=false) Integer page,@RequestParam(required=false) Integer size){return ApiResponse.ok(service.sessions(a.getName(),page,size));}
     @PostMapping public ApiResponse<WorkoutDtos.Session> create(Authentication a,@Valid @RequestBody WorkoutDtos.SessionInput i){idempotency.check(a.getName(),"workout-create",i);return ApiResponse.ok("Workout started",service.create(a.getName(),i));}
     @GetMapping("/{id}") public ApiResponse<WorkoutDtos.Session> get(Authentication a,@PathVariable Long id){return ApiResponse.ok(service.session(a.getName(),id));}
     @PostMapping("/{id}/sets") public ApiResponse<WorkoutDtos.SetEntry> set(Authentication a,@PathVariable Long id,@Valid @RequestBody WorkoutDtos.SetInput i){idempotency.check(a.getName(),"workout-set:"+id,i);return ApiResponse.ok("Set logged",service.addSet(a.getName(),id,i));}
@@ -25,4 +25,5 @@ import java.util.List;
     @GetMapping("/pushups") public ApiResponse<List<WorkoutDtos.PushUp>> pushups(Authentication a){return ApiResponse.ok(service.pushups(a.getName()));}
     @GetMapping("/goals") public ApiResponse<List<WorkoutDtos.ExerciseProgress>> goals(Authentication a){return ApiResponse.ok(service.goals(a.getName()));}
     @PutMapping("/goals") public ApiResponse<WorkoutDtos.ExerciseProgress> goal(Authentication a,@Valid @RequestBody WorkoutDtos.ExerciseGoalInput i){return ApiResponse.ok("Exercise target saved",service.putGoal(a.getName(),i));}
+    @DeleteMapping("/goals/{exerciseName}") public ApiResponse<Void> deleteGoal(Authentication a,@PathVariable String exerciseName){service.deleteGoal(a.getName(),exerciseName);return ApiResponse.ok("Exercise target removed",null);}
 }

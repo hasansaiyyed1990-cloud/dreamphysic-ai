@@ -14,7 +14,7 @@ public final class WorkoutDtos {
     public record ExerciseGuideInput(@NotBlank String name,@NotBlank String muscleGroup,String equipment,@NotBlank String setup,@NotBlank String brace,@NotBlank String execution,@NotBlank String commonMistakes){}
     public record Session(Long id,String name,LocalDateTime sessionDate,List<SetEntry> sets){}
     public record SessionInput(@NotBlank String name,LocalDateTime sessionDate){}
-    public record SetEntry(Long id,String exerciseName,int setNumber,int reps,double weightKg,Double previousWeightKg,double deltaKg,int restSeconds,LocalDateTime workoutDate){}
+    public record SetEntry(Long id,String exerciseName,int setNumber,int reps,double weightKg,Double previousWeightKg,double deltaKg,int restSeconds,LocalDateTime workoutDate,String trackingType,String weightMode){}
     public record SetInput(@NotBlank String exerciseName,@Min(1) int setNumber,@Min(0) int reps,@DecimalMin("0.0") double weightKg,Double previousWeightKg,@Min(0) int restSeconds){}
     public record RepeatResult(String exerciseName,int copiedSets,List<SetEntry> sets){}
     public record PushUp(Long id,int repetitions,String variation,int durationSeconds,LocalDateTime performedAt,String notes){}

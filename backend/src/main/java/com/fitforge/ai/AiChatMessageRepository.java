@@ -1,0 +1,10 @@
+package com.fitforge.ai;
+
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaRepository;
+import java.util.List;
+
+public interface AiChatMessageRepository extends JpaRepository<AiChatMessage,Long>{
+    List<AiChatMessage> findByUserEmailOrderByCreatedAtDescIdDesc(String userEmail,Pageable pageable);
+    long countByUserEmail(String userEmail);
+}

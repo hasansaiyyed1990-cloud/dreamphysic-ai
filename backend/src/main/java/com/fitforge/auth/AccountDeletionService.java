@@ -17,6 +17,7 @@ public class AccountDeletionService {
             "MealEntry", "FavoriteMeal",
             "WeightEntry", "PhysiqueCheckIn",
             "AutopilotDay", "AutopilotSettings", "CoachProposal", "LiveWorkoutState", "PhysiqueGoal",
+            "AiChatMessage",
             "DailyCheckIn", "WeeklyPlanDay"
     );
 

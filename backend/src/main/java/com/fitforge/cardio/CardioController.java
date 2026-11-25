@@ -9,9 +9,10 @@ import java.util.List;
 @RestController @RequestMapping("/api/cardio") public class CardioController {
     private final CardioService service; private final com.fitforge.common.IdempotencyGuard idempotency;
     public CardioController(CardioService service, com.fitforge.common.IdempotencyGuard idempotency){this.service=service;this.idempotency=idempotency;}
-    @GetMapping public ApiResponse<List<CardioDtos.Session>> list(Authentication a){return ApiResponse.ok(service.list(a.getName()));}
+    @GetMapping public ApiResponse<List<CardioDtos.Session>> list(Authentication a,@RequestParam(required=false) Integer page,@RequestParam(required=false) Integer size){return ApiResponse.ok(service.list(a.getName(),page,size));}
     @PostMapping public ApiResponse<CardioDtos.Session> create(Authentication a,@Valid @RequestBody CardioDtos.Create c){idempotency.check(a.getName(),"cardio-create",c);return ApiResponse.ok("Cardio session saved",service.create(a.getName(),c));}
     @DeleteMapping("/{id}") public ApiResponse<Void> delete(Authentication a,@PathVariable Long id){service.delete(a.getName(),id);return ApiResponse.ok("Cardio session deleted",null);}
     @GetMapping("/goals") public ApiResponse<List<CardioDtos.Goal>> goals(Authentication a){return ApiResponse.ok(service.goals(a.getName()));}
     @PutMapping("/goals") public ApiResponse<CardioDtos.Goal> goal(Authentication a,@Valid @RequestBody CardioDtos.GoalInput i){return ApiResponse.ok("Cardio goal saved",service.putGoal(a.getName(),i));}
+    @DeleteMapping("/goals/{goalName}") public ApiResponse<Void> deleteGoal(Authentication a,@PathVariable String goalName){service.deleteGoal(a.getName(),goalName);return ApiResponse.ok("Cardio goal removed",null);}
 }
