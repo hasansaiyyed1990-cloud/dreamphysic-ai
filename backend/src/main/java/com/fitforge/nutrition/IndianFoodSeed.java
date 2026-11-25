@@ -8,7 +8,7 @@ import java.util.List;
 @Configuration
 public class IndianFoodSeed {
  // Nutrients are per 100 g edible portion; common cooked dishes are recipe estimates.
- @Bean ApplicationRunner seedIndianFoods(IndianFoodItemRepository foods){return args->{if(foods.existsByUserIdIsNull())return;
+ @Bean ApplicationRunner seedIndianFoods(IndianFoodItemRepository foods){return args->{
   List<IndianFoodItem> items=List.of(
    food("Chapati / Roti",297,8.1,54.4,3.7,8.2,"piece","COOKED",40),
    food("Cooked white rice",130,2.7,28.2,0.3,0.4,"g","COOKED",150),
@@ -33,7 +33,7 @@ public class IndianFoodSeed {
    food("Soy chunks, dry",345,52.0,33.0,0.5,13.0,"g","RAW",30),
    food("Whey protein powder",400,80.0,10.0,6.0,0.0,"scoop","RAW",30),
    food("Almonds",579,21.2,21.6,49.9,12.5,"g","RAW",15)
-  );foods.saveAll(items);
+  );java.util.Set<String> existing=foods.findByUserIdIsNullOrderByNameAsc().stream().map(f->f.getName().toLowerCase(java.util.Locale.ROOT)).collect(java.util.stream.Collectors.toSet());foods.saveAll(items.stream().filter(f->!existing.contains(f.getName().toLowerCase(java.util.Locale.ROOT))).toList());
  };}
  private static IndianFoodItem food(String n,double k,double p,double c,double f,double fiber,String unit,String prep,double serving){return new IndianFoodItem(n,k,p,c,f,fiber,unit,prep,serving,null,false);}
 }

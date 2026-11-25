@@ -6,6 +6,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
+import java.net.http.HttpClient;
+import java.time.Duration;
 import java.util.*;
 
 @Service
@@ -33,7 +36,18 @@ public class GeminiService {
     public GeminiService(RestClient.Builder builder,ObjectMapper mapper,FitnessKnowledgeService knowledge,
                          @Value("${app.gemini.api-key}") String key,
                          @Value("${app.gemini.base-url:https://generativelanguage.googleapis.com/v1beta}") String baseUrl,
-                         @Value("${app.gemini.model:gemini-3.8-flash}") String model){this.client=builder.build();this.mapper=mapper;this.knowledge=knowledge;this.key=key;this.baseUrl=baseUrl;this.model=model;}
+                         @Value("${app.gemini.model:gemini-3.8-flash}") String model){var http=HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();var requestFactory=new JdkClientHttpRequestFactory(http);requestFactory.setReadTimeout(Duration.ofSeconds(30));this.client=builder.requestFactory(requestFactory).build();this.mapper=mapper;this.knowledge=knowledge;this.key=key;this.baseUrl=baseUrl;this.model=model;}
+
+    public JsonNode scanCardioScreenshot(byte[] imageBytes,String mimeType){
+        String instruction="Read this cardio workout screenshot. Return only JSON with keys isCardioScreenshot(boolean), confidence(high|medium|low), sourceApp, activityType (RUNNING|SWIMMING|CYCLING|HIIT|WALKING|INDOOR_JOGGING|OTHER), sessionDate(YYYY-MM-DD or null), durationSeconds(integer or null), distanceKm(number or null), avgPaceSecPerKm(integer or null), caloriesBurned(integer or null), avgHeartRate(integer or null), notes. Use metric units. Do not guess unreadable values; set them null. If this is not a workout summary set isCardioScreenshot false and confidence low.";
+        try {
+            String encoded=Base64.getEncoder().encodeToString(imageBytes);
+            String answer=generate(instruction,Map.of("inlineData",Map.of("mimeType",mimeType,"data",encoded)));
+            int begin=answer.indexOf('{'),end=answer.lastIndexOf('}');
+            if(begin<0||end<begin)throw new IllegalArgumentException("No JSON object in model output");
+            return mapper.readTree(answer.substring(begin,end+1));
+        } catch(Exception ex) { throw new IllegalStateException("Screenshot scan is unavailable; try a clearer image"); }
+    }
 
     @Cacheable(value="fitforge-ai-advice",key="#email + ':' + #prompt.hashCode() + ':' + #live.promptBlock().hashCode()")
     public String workoutAdvice(String email,String prompt,AiLiveContextService.LiveContext live){return coached("Give concise beginner strength/physique coaching. User request: "+prompt,prompt,live);}
