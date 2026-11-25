@@ -125,12 +125,17 @@ class ProductionCriticalScenariosTest {
 
     @Test
     void expiredAndInvalidatedJwtTokensAreRejected() throws Exception {
+        mvc.perform(get("/api/progress/metabolic"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().json("{\"error\":\"Unauthorized\"}"));
+
         String expired = expiredJwt(user);
-        // The configured production filter chain rejects invalid tokens with 403.
-        mvc.perform(bearer(get("/api/progress/metabolic"), expired)).andExpect(status().isForbidden());
+        mvc.perform(bearer(get("/api/progress/metabolic"), expired)).andExpect(status().isUnauthorized())
+                .andExpect(content().json("{\"error\":\"Unauthorized\"}"));
 
         mvc.perform(bearer(post("/api/auth/logout-all"), token)).andExpect(status().isOk());
-        mvc.perform(bearer(get("/api/progress/metabolic"), token)).andExpect(status().isForbidden());
+        mvc.perform(bearer(get("/api/progress/metabolic"), token)).andExpect(status().isUnauthorized())
+                .andExpect(content().json("{\"error\":\"Unauthorized\"}"));
     }
 
     @Test
@@ -245,7 +250,8 @@ class ProductionCriticalScenariosTest {
         assertThat(cardioSessions.findByUserEmailOrderBySessionDateDesc(email)).isEmpty();
         assertThat(weights.findByUserEmailAndDateBetweenOrderByDateAsc(email, today.minusDays(1), today)).isEmpty();
         mvc.perform(get("/api/progress/metabolic").header("Authorization", "Bearer " + token))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().json("{\"error\":\"Unauthorized\"}"));
     }
 
     private AppUser newUser() {
