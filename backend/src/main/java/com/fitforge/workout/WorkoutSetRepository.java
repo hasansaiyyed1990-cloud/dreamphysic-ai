@@ -11,6 +11,7 @@ public interface WorkoutSetRepository extends JpaRepository<WorkoutSet,Long>{
     List<WorkoutSet> lastSets(@Param("email") String email,@Param("exercise") String exercise);
     List<WorkoutSet> findByUserEmailOrderByExerciseNameAscWeightKgDescWorkoutDateDesc(String email);
     List<WorkoutSet> findByUserEmailOrderByWorkoutDateDesc(String email, Pageable pageable);
+    java.util.Optional<WorkoutSet> findByIdAndUserEmail(Long id,String email);
     @Query("select s from WorkoutSet s where s.userEmail=:email and lower(s.exerciseName)=lower(:exercise) order by s.workoutDate desc, s.setNumber asc")
     List<WorkoutSet> sessionsForExercise(@Param("email") String email,@Param("exercise") String exercise);
 }

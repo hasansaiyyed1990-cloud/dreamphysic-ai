@@ -10,6 +10,11 @@ public final class AutopilotDtos {
  public record Meal(String name,String foods,int calories,double proteinG,double carbsG,double fatG,double fiberG){}
  public record Nutrition(int calorieTarget,int caloriesConsumed,int caloriesRemaining,double proteinTargetG,double proteinConsumedG,double proteinRemainingG,double carbsG,double fatG,double fiberG,List<Meal> practicalMeals){}
  public record DailyPlan(LocalDate date,Workout workout,Cardio cardio,Nutrition nutrition,String recoveryStatus,String recoveryReason,List<String> dailyGoals,String tomorrowPreview,boolean expressMode){}
+ public record PlanSnapshot(DailyPlan plan,Set<String> manualOverrides,LocalDateTime lastAdjustedAt,boolean autoPlanEnabled,String preferredBriefingTime,Map<String,Object> todayState){}
+ public record PlanPatch(@NotBlank String targetId,@NotNull Map<String,Object> values,boolean saveAsDefault){}
+ public record DefaultsUpdate(Boolean autoPlanEnabled,@Pattern(regexp="(?:[01]\\d|2[0-3]):[0-5]\\d") String briefingTime,Map<String,Object> defaults){}
+ public record RecalibrateRequest(@NotBlank String situation,String customDetails,Boolean keepFullIntensity,String expectedVersion){}
+ public record RecalibratePreview(DailyPlan before,DailyPlan after,List<String> changedFields,Map<String,Object> beforeState,Map<String,Object> afterState,String baseVersion,boolean preservesManualOverrides,String explanation){}
  public record PlanUpdate(@NotNull Workout workout,@NotNull Cardio cardio,@NotNull Nutrition nutrition,@NotBlank String recoveryStatus,List<String> dailyGoals,String tomorrowPreview,boolean expressMode){}
  public record CoachPrompt(@NotBlank String prompt,String exerciseName,Double rpe,String pain,Boolean missedWorkout){}
  public record Proposal(Long id,String type,String status,String what,String why,String dataInfluenced,String impactIfAccepted,Map<String,Object> details,LocalDateTime createdAt){}
