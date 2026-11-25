@@ -72,6 +72,8 @@ public class AuthService {
     public void forgotPassword(AuthDtos.ForgotPasswordRequest req) {
         String email = req.email().trim().toLowerCase();
         if (users.findByEmail(email).isEmpty()) return;
+        // Only the newest code may be valid: invalidate any earlier unused OTP.
+        otps.invalidateActiveForEmail(email);
         String otp = String.format("%06d", RNG.nextInt(1_000_000));
         otps.save(new PasswordResetOtp(email, encoder.encode(otp), Instant.now().plus(10, ChronoUnit.MINUTES)));
         JavaMailSender sender = mailSender.getIfAvailable();
@@ -87,21 +89,25 @@ public class AuthService {
         }
     }
 
-    @Transactional
+    // Failed attempts must survive the returned error, otherwise the 5-try cap never persists.
+    @Transactional(noRollbackFor = IllegalArgumentException.class)
     public void resetPassword(AuthDtos.ResetPasswordRequest req) {
         String email = req.email().trim().toLowerCase();
         PasswordResetOtp record = otps.findTopByEmailAndUsedFalseOrderByCreatedAtDesc(email)
                 .orElseThrow(() -> new IllegalArgumentException("Invalid or expired OTP"));
         if (Instant.now().isAfter(record.getExpiresAt()) || record.getAttempts() >= MAX_OTP_ATTEMPTS) {
             record.markUsed();
+            otps.save(record);
             throw new IllegalArgumentException("Invalid or expired OTP");
         }
         if (!encoder.matches(req.otp(), record.getOtpHash())) {
             record.incrementAttempts();
             if (record.getAttempts() >= MAX_OTP_ATTEMPTS) record.markUsed();
+            otps.save(record);
             throw new IllegalArgumentException("Invalid or expired OTP");
         }
         record.markUsed();
+        otps.save(record);
         AppUser user = users.findByEmail(email)
                 .orElseThrow(() -> new IllegalArgumentException("Invalid or expired OTP"));
         user.setPasswordHash(encoder.encode(req.newPassword()));

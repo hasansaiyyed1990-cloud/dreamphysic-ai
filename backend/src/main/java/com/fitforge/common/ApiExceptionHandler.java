@@ -8,12 +8,21 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
     private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(ApiExceptionHandler.class);
+
+    // Fragments that only appear in SQL, ORM or stack traces; such messages are never echoed.
+    private static final List<String> INTERNAL_MARKERS = List.of(
+            "sqlexception", "sqlstate", "sql state", "org.postgresql", "org.hibernate", "java.sql",
+            "jdbc", "select ", "insert into", "delete from", "constraint", "caused by", "\tat ",
+            "\n", "\r", "stacktrace");
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     ResponseEntity<ApiResponse<Map<String, String>>> validation(MethodArgumentNotValidException ex) {
         org.slf4j.MDC.put("errorCode", "VALIDATION_ERROR");
@@ -31,21 +40,20 @@ public class ApiExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     ResponseEntity<ApiResponse<Void>> badRequest(IllegalArgumentException ex) {
         org.slf4j.MDC.put("errorCode", "BAD_REQUEST");
-        return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
+        return ResponseEntity.badRequest().body(ApiResponse.error(safeMessage(ex.getMessage(), "Invalid request value")));
     }
 
     @ExceptionHandler(org.springframework.web.server.ResponseStatusException.class)
     ResponseEntity<ApiResponse<Void>> status(org.springframework.web.server.ResponseStatusException ex) {
         org.slf4j.MDC.put("errorCode", "HTTP_" + ex.getStatusCode().value());
-        return ResponseEntity.status(ex.getStatusCode()).body(ApiResponse.error(ex.getReason()));
+        return ResponseEntity.status(ex.getStatusCode()).body(ApiResponse.error(safeMessage(ex.getReason(), "Request failed")));
     }
 
     @ExceptionHandler(IllegalStateException.class)
     ResponseEntity<ApiResponse<Void>> serviceUnavailable(IllegalStateException ex) {
         org.slf4j.MDC.put("errorCode", "SERVICE_UNAVAILABLE");
-        String message = ex.getMessage();
-        if (message == null || message.isBlank()) message = "AI service is temporarily unavailable; please retry shortly";
-        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(ApiResponse.error(message));
+        String fallback = "Service is temporarily unavailable; please retry shortly";
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(ApiResponse.error(safeMessage(ex.getMessage(), fallback)));
     }
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)
@@ -97,5 +105,17 @@ public class ApiExceptionHandler {
     ResponseEntity<ApiResponse<Void>> unexpected(Exception ex) {
         LOG.error("Unhandled exception", ex);
         return ResponseEntity.internalServerError().body(ApiResponse.error("Internal server error"));
+    }
+
+    /** Returns the message only when it is a short, user-facing value with no SQL/stack-trace content. */
+    private static String safeMessage(String message, String fallback) {
+        if (message == null || message.isBlank()) return fallback;
+        String value = message.strip();
+        if (value.length() > 200) return fallback;
+        String lower = value.toLowerCase(Locale.ROOT);
+        for (String marker : INTERNAL_MARKERS) {
+            if (lower.contains(marker)) return fallback;
+        }
+        return value;
     }
 }
