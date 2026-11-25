@@ -8,9 +8,11 @@ import java.time.LocalDate;
 import java.util.List;
 
 @RestController @RequestMapping("/api/meals") public class NutritionController {
-    private final NutritionService service;public NutritionController(NutritionService service){this.service=service;}
+    private final NutritionService service;
+    private final com.fitforge.common.IdempotencyGuard idempotency;
+    public NutritionController(NutritionService service, com.fitforge.common.IdempotencyGuard idempotency){this.service=service;this.idempotency=idempotency;}
     @GetMapping public ApiResponse<List<NutritionDtos.Meal>> meals(Authentication a,@RequestParam(defaultValue="") String date){return ApiResponse.ok(service.meals(a.getName(),date.isBlank()?LocalDate.now():LocalDate.parse(date)));}
-    @PostMapping public ApiResponse<NutritionDtos.Meal> add(Authentication a,@Valid @RequestBody NutritionDtos.MealInput i){return ApiResponse.ok("Meal saved",service.add(a.getName(),i));}
+    @PostMapping public ApiResponse<NutritionDtos.Meal> add(Authentication a,@Valid @RequestBody NutritionDtos.MealInput i){idempotency.check(a.getName(),"meal-create",i);return ApiResponse.ok("Meal saved",service.add(a.getName(),i));}
     @DeleteMapping("/{id}") public ApiResponse<Void> delete(Authentication a,@PathVariable Long id){service.delete(a.getName(),id);return ApiResponse.ok("Meal deleted",null);}
     @GetMapping("/summary") public ApiResponse<NutritionDtos.Summary> summary(Authentication a,@RequestParam(defaultValue="") String date){return ApiResponse.ok(service.summary(a.getName(),date.isBlank()?LocalDate.now():LocalDate.parse(date)));}
     @GetMapping("/favorites") public ApiResponse<List<NutritionDtos.Favorite>> favorites(Authentication a){return ApiResponse.ok(service.favorites(a.getName()));}

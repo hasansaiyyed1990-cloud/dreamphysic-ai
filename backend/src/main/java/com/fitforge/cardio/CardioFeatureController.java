@@ -13,7 +13,9 @@ import java.util.*;
 @RequestMapping("/api/cardio")
 public class CardioFeatureController {
     private final CardioFeatureService service;
-    public CardioFeatureController(CardioFeatureService service){this.service=service;}
+    private final CardioAiQuota quota;
+    private final com.fitforge.common.IdempotencyGuard idempotency;
+    public CardioFeatureController(CardioFeatureService service, CardioAiQuota quota, com.fitforge.common.IdempotencyGuard idempotency){this.service=service;this.quota=quota;this.idempotency=idempotency;}
 
     @GetMapping("/overview") public ApiResponse<CardioDtos.Overview> overview(Authentication auth){return ApiResponse.ok("Cardio overview",service.overview(auth.getName()));}
     @GetMapping("/library") public ApiResponse<List<Map<String,Object>>> library(@RequestParam(required=false) String search){
@@ -28,9 +30,10 @@ public class CardioFeatureController {
 
     @PostMapping(value="/import-screenshot",consumes=MediaType.MULTIPART_FORM_DATA_VALUE)
     public ApiResponse<CardioDtos.ScreenshotImport> scan(Authentication a,@RequestPart("image") MultipartFile file) throws IOException {
+        quota.enforce(a.getName());
         byte[] bytes=file.getBytes();try{return ApiResponse.ok("Screenshot analyzed; review before saving",service.scanScreenshot(a.getName(),bytes,file.getContentType()));}finally{Arrays.fill(bytes,(byte)0);}
     }
-    @PostMapping("/import-screenshot/confirm") public ApiResponse<CardioDtos.Session> confirm(Authentication a,@Valid @RequestBody CardioDtos.ScreenshotImport input){return ApiResponse.ok("Screenshot workout saved",service.confirmScreenshot(a.getName(),input));}
+    @PostMapping("/import-screenshot/confirm") public ApiResponse<CardioDtos.Session> confirm(Authentication a,@Valid @RequestBody CardioDtos.ScreenshotImport input){idempotency.check(a.getName(),"cardio-confirm",input);return ApiResponse.ok("Screenshot workout saved",service.confirmScreenshot(a.getName(),input));}
 
     private Map<String,Object> item(String name,String category,String mode,double met,String description){return Map.of("name",name,"category",category,"trackingMode",mode,"metValue",met,"description",description);}
 }

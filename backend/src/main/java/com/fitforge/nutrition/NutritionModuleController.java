@@ -9,11 +9,12 @@ import java.time.LocalDate; import java.util.List;
 @RestController @RequestMapping("/api/nutrition")
 public class NutritionModuleController {
  private final NutritionModuleService service;
- public NutritionModuleController(NutritionModuleService service){this.service=service;}
+ private final com.fitforge.common.IdempotencyGuard idempotency;
+ public NutritionModuleController(NutritionModuleService service, com.fitforge.common.IdempotencyGuard idempotency){this.service=service;this.idempotency=idempotency;}
  @GetMapping("/foods") public ApiResponse<List<NutritionModuleDtos.Food>> foods(Authentication a,@RequestParam(defaultValue="") String search,@RequestParam(defaultValue="true") boolean includeCustom){return ApiResponse.ok(service.foods(a.getName(),search,includeCustom));}
  @PostMapping("/foods/custom") public ApiResponse<NutritionModuleDtos.Food> customFood(Authentication a,@Valid @RequestBody NutritionModuleDtos.CustomFoodInput i){return ApiResponse.ok("Custom food saved",service.customFood(a.getName(),i));}
  @GetMapping("/diary/{date}") public ApiResponse<NutritionModuleDtos.DiaryDay> day(Authentication a,@PathVariable LocalDate date){return ApiResponse.ok(service.day(a.getName(),date));}
- @PostMapping("/diary") public ApiResponse<NutritionModuleDtos.Diary> add(Authentication a,@Valid @RequestBody NutritionModuleDtos.DiaryInput i){return ApiResponse.ok("Diary entry saved",service.addDiary(a.getName(),i));}
+ @PostMapping("/diary") public ApiResponse<NutritionModuleDtos.Diary> add(Authentication a,@Valid @RequestBody NutritionModuleDtos.DiaryInput i){idempotency.check(a.getName(),"diary-create",i);return ApiResponse.ok("Diary entry saved",service.addDiary(a.getName(),i));}
  @PutMapping("/diary/{id}") public ApiResponse<NutritionModuleDtos.Diary> update(Authentication a,@PathVariable Long id,@Valid @RequestBody NutritionModuleDtos.DiaryInput i){return ApiResponse.ok("Diary entry updated",service.updateDiary(a.getName(),id,i));}
  @DeleteMapping("/diary/{id}") public ApiResponse<Void> delete(Authentication a,@PathVariable Long id){service.deleteDiary(a.getName(),id);return ApiResponse.ok("Diary entry deleted",null);}
  @GetMapping("/favorites") public ApiResponse<List<NutritionModuleDtos.Favorite>> favorites(Authentication a){return ApiResponse.ok(service.favorites(a.getName()));}

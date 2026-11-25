@@ -16,8 +16,8 @@ import java.util.Date;
 public class JwtService {
     private final SecretKey key;
     private final long expirationMs;
-    public JwtService(@Value("${app.jwt.secret}") String secret, @Value("${app.jwt.expiration-ms:86400000}") long expirationMs) {
-        this.expirationMs=expirationMs;
+    public JwtService(@Value("${app.jwt.secret}") String secret, @Value("${app.jwt.expiration-ms:604800000}") long expirationMs) {
+        this.expirationMs = expirationMs;
         byte[] bytes;
         try { bytes = Decoders.BASE64.decode(secret); } catch (RuntimeException notBase64) { bytes = secret.getBytes(java.nio.charset.StandardCharsets.UTF_8); }
         if (bytes.length < 32) throw new IllegalStateException("JWT_SECRET must be at least 256 bits (32 bytes)");
@@ -25,7 +25,27 @@ public class JwtService {
         this.key = Keys.hmacShaKeyFor(bytes);
     }
     private SecretKey key(){return key;}
-    public String issue(UserDetails u){Instant now=Instant.now(); return Jwts.builder().subject(u.getUsername()).issuedAt(Date.from(now)).expiration(Date.from(now.plusMillis(expirationMs))).signWith(key()).compact();}
+    public String issue(UserDetails u){
+        Instant now = Instant.now();
+        int tv = (u instanceof AppUser appUser) ? appUser.getTokenVersion() : 0;
+        return Jwts.builder()
+                .subject(u.getUsername())
+                .claim("tv", tv)
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(now.plusMillis(expirationMs)))
+                .signWith(key())
+                .compact();
+    }
     public Claims parse(String token){return Jwts.parser().verifyWith(key()).build().parseSignedClaims(token).getPayload();}
-    public boolean valid(String token, UserDetails u){try{return parse(token).getSubject().equals(u.getUsername()) && parse(token).getExpiration().after(new Date());}catch(Exception e){return false;}}
+    public boolean valid(String token, UserDetails u){
+        try {
+            Claims claims = parse(token);
+            if (!claims.getSubject().equals(u.getUsername()) || !claims.getExpiration().after(new Date())) return false;
+            if (u instanceof AppUser appUser) {
+                Integer tv = claims.get("tv", Integer.class);
+                return tv != null && tv == appUser.getTokenVersion();
+            }
+            return true;
+        } catch (Exception e) { return false; }
+    }
 }

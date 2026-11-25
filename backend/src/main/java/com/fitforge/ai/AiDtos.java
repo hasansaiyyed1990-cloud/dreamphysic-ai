@@ -11,7 +11,7 @@ public final class AiDtos {
     public record MealScanRequest(@NotBlank @Size(max=14_000_000) String imageBase64,String mimeType,String prompt){}
     public record PromptRequest(@NotBlank String prompt){}
     public record MealItemAnalysis(String foodName,String estimatedServingSize,double quantityG,double calories,double proteinG,double carbsG,double fatG,double fiberG,int confidencePercent,String uncertaintyNote){}
-    public record MealAnalysis(String name,int calories,double proteinG,double carbsG,double fatG,Double fiberG,String description,List<MealItemAnalysis> items,int confidencePercent,String uncertaintyNote){}
+    public record MealAnalysis(String name,int calories,double proteinG,double carbsG,double fatG,Double fiberG,String description,List<MealItemAnalysis> items,int confidencePercent,String uncertaintyNote,boolean isFood){}
     public record ProteinCoach(double proteinTargetG,double consumedProteinG,double remainingProteinG,List<ProteinOption> options,String coachingNote){}
     public record ProteinOption(String id,String mealCategory,String name,List<ProteinLogItem> items,double calories,double proteinG,double carbsG,double fatG,double fiberG){}
     public record ProteinLogItem(String foodName,double quantity,String unit,String preparationType,double calories,double proteinG,double carbsG,double fatG,double fiberG){}

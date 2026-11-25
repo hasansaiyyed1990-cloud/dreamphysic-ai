@@ -16,6 +16,7 @@ public class ApiExceptionHandler {
     private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(ApiExceptionHandler.class);
     @ExceptionHandler(MethodArgumentNotValidException.class)
     ResponseEntity<ApiResponse<Map<String, String>>> validation(MethodArgumentNotValidException ex) {
+        org.slf4j.MDC.put("errorCode", "VALIDATION_ERROR");
         var errors = ex.getBindingResult().getFieldErrors().stream().collect(Collectors.toMap(
                 e -> e.getField(), e -> e.getDefaultMessage() == null ? "Invalid value" : e.getDefaultMessage(), (a, b) -> a));
         return ResponseEntity.badRequest().body(ApiResponse.error("Validation failed: " + errors));
@@ -23,21 +24,25 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(BadCredentialsException.class)
     ResponseEntity<ApiResponse<Void>> badCredentials() {
+        org.slf4j.MDC.put("errorCode", "BAD_CREDENTIALS");
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(ApiResponse.error("Invalid email or password"));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
     ResponseEntity<ApiResponse<Void>> badRequest(IllegalArgumentException ex) {
+        org.slf4j.MDC.put("errorCode", "BAD_REQUEST");
         return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
     }
 
     @ExceptionHandler(org.springframework.web.server.ResponseStatusException.class)
     ResponseEntity<ApiResponse<Void>> status(org.springframework.web.server.ResponseStatusException ex) {
+        org.slf4j.MDC.put("errorCode", "HTTP_" + ex.getStatusCode().value());
         return ResponseEntity.status(ex.getStatusCode()).body(ApiResponse.error(ex.getReason()));
     }
 
     @ExceptionHandler(IllegalStateException.class)
     ResponseEntity<ApiResponse<Void>> serviceUnavailable(IllegalStateException ex) {
+        org.slf4j.MDC.put("errorCode", "SERVICE_UNAVAILABLE");
         String message = ex.getMessage();
         if (message == null || message.isBlank()) message = "AI service is temporarily unavailable; please retry shortly";
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(ApiResponse.error(message));

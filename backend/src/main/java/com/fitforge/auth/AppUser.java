@@ -16,10 +16,14 @@ public class AppUser implements UserDetails {
     @Column(nullable = false, unique = true, length = 190) private String email;
     @Column(name = "password", nullable = false, length = 100) private String passwordHash;
     @Column(nullable = false) private int targetCalories = 1800;
+    @Column(name = "token_version", nullable = false) private int tokenVersion = 0;
     @Column(nullable = false, updatable = false) private LocalDateTime createdAt = LocalDateTime.now();
     protected AppUser() {}
     public AppUser(String name, String email, String passwordHash) { this.name=name; this.email=email.toLowerCase(); this.passwordHash=passwordHash; }
     public Long getId(){return id;} public String getName(){return name;} public int getTargetCalories(){return targetCalories;}
+    public int getTokenVersion(){return tokenVersion;}
+    public void incrementTokenVersion(){this.tokenVersion++;}
+    public void setPasswordHash(String passwordHash){this.passwordHash=passwordHash;}
     @Override public Collection<? extends GrantedAuthority> getAuthorities(){return List.of(new SimpleGrantedAuthority("ROLE_USER"));}
     @Override public String getPassword(){return passwordHash;} @Override public String getUsername(){return email;}
     @Override public boolean isAccountNonExpired(){return true;} @Override public boolean isAccountNonLocked(){return true;}
