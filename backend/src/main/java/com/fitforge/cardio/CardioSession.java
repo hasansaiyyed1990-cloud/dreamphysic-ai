@@ -13,7 +13,7 @@ public class CardioSession {
     @Column(nullable=false) private double paceMinPerKm;
     private Integer caloriesBurned; private Boolean caloriesEstimated=false; private Integer staminaScore;
     @Column(name="session_date",nullable=false) private LocalDateTime sessionDate;
-    @Column(length=1000) private String notes;
+    @Column(columnDefinition="text") private String notes;
     @Column(length=30) private String source="MANUAL";
     @Column(name="external_activity_id",length=180) private String externalActivityId;
     @Column(name="average_heart_rate") private Integer averageHeartRate;
