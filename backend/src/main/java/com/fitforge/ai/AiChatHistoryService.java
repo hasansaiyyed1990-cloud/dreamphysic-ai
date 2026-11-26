@@ -23,6 +23,25 @@ public class AiChatHistoryService {
         prune(email);
     }
 
+    /** Compact recent exchanges for prompt continuity; empty when the user has no history. */
+    public String recentBlock(String email,int limit){
+        if(email==null||email.isBlank()||limit<=0)return "";
+        List<AiChatMessage> rows=repo.findByUserEmailOrderByCreatedAtDescIdDesc(email,PageRequest.of(0,limit));
+        if(rows.isEmpty())return "";
+        StringBuilder out=new StringBuilder();
+        for(int i=rows.size()-1;i>=0;i--){
+            AiChatMessage m=rows.get(i);
+            out.append("- USER: ").append(clip(m.getPrompt(),240)).append("\n  COACH: ").append(clip(m.getResponse(),320)).append("\n");
+        }
+        return out.toString();
+    }
+
+    private static String clip(String value,int max){
+        if(value==null)return "";
+        String flat=value.replaceAll("\\s+"," ").trim();
+        return flat.length()<=max?flat:flat.substring(0,max)+"...";
+    }
+
     private void prune(String email){
         List<AiChatMessage> overflow=repo.findByUserEmailOrderByCreatedAtDescIdDesc(
                 email,PageRequest.of(0,MAX_MESSAGES_PER_USER+200));

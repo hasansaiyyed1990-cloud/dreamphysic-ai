@@ -38,6 +38,7 @@ public class AiLiveContextService {
     private final MealRepository legacyMeals;
     @Autowired(required = false) private UserCoachContextBuilder coachContextBuilder;
     @Autowired(required = false) private CoachFormulaEngine formulaEngine;
+    @Autowired(required = false) private AiChatHistoryService chatHistory;
 
     public AiLiveContextService(AppUserRepository users, WeightRepository weights, WorkoutSetRepository sets, CardioRepository cardio,CardioGoalRepository cardioGoals,ExerciseGoalRepository exerciseGoals,FoodDiaryRepository foodDiary,FatLossMissionRepository missions,DailyCalorieBalanceRepository balances,HydrationFiberRepository hydration,MealRepository legacyMeals) {
         this.users = users; this.weights = weights; this.sets = sets; this.cardio = cardio;this.cardioGoals=cardioGoals;this.exerciseGoals=exerciseGoals;this.foodDiary=foodDiary;this.missions=missions;this.balances=balances;this.hydration=hydration;this.legacyMeals=legacyMeals;
@@ -93,6 +94,13 @@ public class AiLiveContextService {
             UserCoachContextBuilder.CoachContext coach = coachContextBuilder.build(email);
             b.append("\n").append(coach.promptBlock()).append("\n");
             if (formulaEngine != null) b.append(formulaEngine.build(coach)).append("\n");
+        }
+        if (chatHistory != null) {
+            String recentChat = chatHistory.recentBlock(email, 3);
+            if (!recentChat.isBlank()) {
+                b.append("\n[RECENT COACH CHAT - only for follow-up continuity, never repeat or contradict it]\n")
+                        .append(recentChat).append("[/RECENT COACH CHAT]\n");
+            }
         }
         return new LiveContext(b.toString(), weight.map(w -> w.getWeightKg()).orElse(70.0), weight.isPresent(), calories,
                 weeklyRunKm, longestRunKm, recentRunPace, primaryGoal, targetWeight, targetDate);
