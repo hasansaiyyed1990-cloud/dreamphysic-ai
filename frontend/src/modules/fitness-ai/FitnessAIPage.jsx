@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { Send, Mic, Sparkles, ChevronRight, Plus, RefreshCw, Brain } from 'lucide-react';
 import { api } from '../../shared/api.js';
 import { GlassCard, TealButton, Spinner, ErrorMsg, Badge } from '../../shared/ui.jsx';
+import CoachText from '../../shared/CoachText.jsx';
 
 const QUICK_PROMPTS = [
   { label: '💪 Chest growth plan?', prompt: 'Give me a chest growth plan for this week.' },
@@ -27,7 +28,7 @@ const ChatBubble = memo(({ msg }) => (
       }`}
       style={msg.role === 'user' ? { background: '#2dd4bf' } : { background: 'rgba(15,23,42,0.88)', border: '1px solid rgba(255,255,255,0.08)' }}
     >
-      {msg.content}
+      {msg.role === 'ai' ? <CoachText text={msg.content} /> : msg.content}
     </div>
   </div>
 ));

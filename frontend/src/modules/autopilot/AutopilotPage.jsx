@@ -3,6 +3,7 @@ import { Navigation, Zap, Droplets, CheckCircle, Circle, ChevronRight, RefreshCw
 import { api } from '../../shared/api.js';
 import { GlassCard, TealButton, PurpleButton, GhostButton, Spinner, ErrorMsg, Badge, CircularProgress } from '../../shared/ui.jsx';
 import { getLocalIstDateString } from '../../shared/date.js';
+import CoachText from '../../shared/CoachText.jsx';
 
 // Isolated hydration stepper — doesn't re-render parent
 const HydrationStepper = memo(({ value, onChange }) => (
@@ -273,7 +274,7 @@ export default function AutopilotPage() {
         </div>
         {coachReply && (
           <div className="mt-3 p-3 rounded-xl bg-purple/5 border border-purple/20">
-            <p className="text-white text-sm leading-relaxed">{coachReply}</p>
+            <CoachText text={coachReply} className="text-white text-sm" />
           </div>
         )}
       </GlassCard>
