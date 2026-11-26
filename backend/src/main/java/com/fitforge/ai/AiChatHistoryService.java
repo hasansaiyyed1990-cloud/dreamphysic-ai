@@ -10,6 +10,7 @@ import java.util.List;
 public class AiChatHistoryService {
     /** Keep only the newest exchanges so the table cannot grow without bound. */
     public static final int MAX_MESSAGES_PER_USER = 80;
+    public static final int RECENT_CONTEXT_EXCHANGES = 10;
 
     private final AiChatMessageRepository repo;
 
@@ -26,7 +27,7 @@ public class AiChatHistoryService {
     /** Compact recent exchanges for prompt continuity; empty when the user has no history. */
     public String recentBlock(String email,int limit){
         if(email==null||email.isBlank()||limit<=0)return "";
-        List<AiChatMessage> rows=repo.findByUserEmailOrderByCreatedAtDescIdDesc(email,PageRequest.of(0,limit));
+        List<AiChatMessage> rows=repo.findByUserEmailOrderByCreatedAtDescIdDesc(email,PageRequest.of(0,Math.min(limit, RECENT_CONTEXT_EXCHANGES)));
         if(rows.isEmpty())return "";
         StringBuilder out=new StringBuilder();
         for(int i=rows.size()-1;i>=0;i--){

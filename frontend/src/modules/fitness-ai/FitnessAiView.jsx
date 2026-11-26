@@ -25,18 +25,18 @@ const STARTER_CHIPS = [
   { label: '⚡ Stamina Plan', prompt: 'Build me a 10km stamina plan with weekly pacing and recovery.' },
   { label: '🔥 Fat Loss Math', prompt: 'Calculate my realistic fat loss math and daily Indian calorie deficit.' },
   { label: '💪 120g Desi Protein', prompt: 'Give me a practical 120g Indian protein plan using home foods.' },
-  { label: '📈 1M/3M/6M Progress', prompt: 'Project my 1-month, 3-month, and 6-month strength and physique progress.' },
+  { label: '➕ More', prompt: 'Compare my logged 1-month, 3-month, 6-month, and all-time fitness progress.' },
 ];
 
 function parseCoachPayload(raw) {
   if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
     return {
       structured: true,
-      timeline: raw.timeline || '8–12 Weeks',
-      target: raw.target || 'Consistent Progress',
-      baseline: raw.baseline || 'Synced from your recent workouts & diet logs',
+      timeline: raw.timeline || raw.verdictAndTimeline || 'Timeline not specified',
+      target: raw.target || 'See coach plan',
+      baseline: raw.baseline || raw.dataDiagnosis || 'No matching baseline was included in this response.',
       steps: Array.isArray(raw.steps) && raw.steps.length ? raw.steps : [raw.summary || JSON.stringify(raw)],
-      kitchenRule: raw.kitchenRule || 'Add 1 bowl curd + 50g soya/eggs post-workout (+28g protein).',
+      kitchenRule: raw.kitchenRule || raw.indianDietRule || 'No specific food adjustment was included.',
       subPlans: raw.subPlans || null,
       rawText: raw.reply || raw.message || '',
     };
@@ -60,11 +60,11 @@ function parseCoachPayload(raw) {
 
   return {
     structured: true,
-    timeline: timelineMatch ? timelineMatch[1] : '8–12 Weeks',
-    target: targetMatch ? targetMatch[1].trim() : 'Personalized Plan',
-    baseline: lines[0] || 'Based on your live training & nutrition history',
+    timeline: timelineMatch ? timelineMatch[1] : 'Timeline not specified',
+    target: targetMatch ? targetMatch[1].trim() : 'See coach plan',
+    baseline: lines[0] || 'No logged baseline was included in this response.',
     steps: lines.slice(0, 3).length ? lines.slice(0, 3) : [text],
-    kitchenRule: kitchenLine || 'Prioritize 1.6g/kg protein + 3.5L hydration daily.',
+    kitchenRule: kitchenLine || 'No specific food adjustment was included.',
     subPlans: null,
     rawText: text,
   };
@@ -163,7 +163,7 @@ const StructuredCoachCard = memo(({ msg, onApplyPlan, onNavigate }) => {
               <circle key={i} cx={cx} cy={cy} r="2.8" fill="#fbbf24" />
             ))}
           </svg>
-          <p className="text-[10px] text-teal font-semibold mt-1">Steady upward trajectory</p>
+          <p className="text-[10px] text-teal font-semibold mt-1">Illustrative only · not a result guarantee</p>
         </div>
       </div>
 
@@ -202,7 +202,7 @@ const StructuredCoachCard = memo(({ msg, onApplyPlan, onNavigate }) => {
         onClick={() => onApplyPlan(data)}
         className="w-full btn-teal flex items-center justify-center gap-2 py-3 text-xs"
       >
-        <Play size={14} /> Apply Plan to Cardio &amp; Diet
+        <Play size={14} /> Review Plan in Cardio &amp; Diet
       </button>
     </div>
   );
@@ -278,7 +278,8 @@ export default function FitnessAiView({ onNavigate }) {
   }
 
   function handleApplyPlan() {
-    setToast('Plan targets applied to your Cardio & Diet!');
+    setToast('Review coach suggestions before logging them.');
+    onNavigate?.('diet');
     setTimeout(() => setToast(''), 2800);
   }
 

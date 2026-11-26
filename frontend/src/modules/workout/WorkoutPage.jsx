@@ -4,6 +4,7 @@ import { api } from '../../shared/api.js';
 import { GlassCard, TealButton, GhostButton, Spinner, ErrorMsg, Badge, Chip, ContentEmptyState, ScienceTooltip } from '../../shared/ui.jsx';
 import { GYM_EXERCISES } from './gymExerciseSwapDb.js';
 import { scheduleRestTimerCompletion } from '../../shared/restTimerNotification.js';
+import { useAuth } from '../../shared/AuthContext.jsx';
 
 // Isolated stepper — won't re-render parent on tick
 const SetRow = memo(({ set, onChange, onDone, disabled = false }) => {
@@ -65,6 +66,8 @@ const RestTimer = memo(({ seconds: initSec, onDone }) => {
 });
 
 export default function WorkoutPage() {
+  const { user } = useAuth() ?? {};
+  const userKey = user?.id || user?.email || 'default';
   const [sessions, setSessions] = useState([]);
   const [library, setLibrary] = useState([]);
   const [goals, setGoals] = useState(null);
@@ -106,7 +109,7 @@ export default function WorkoutPage() {
 
   useEffect(() => { load(); return () => { loadControllerRef.current?.abort(); swapControllerRef.current?.abort(); }; }, [load]);
 
-  async function startSession(split) {
+  async function startSession(split, plannedExercises = null) {
     setCreating(true);
     try {
       const sessionDate = new Date().toISOString().slice(0, 19);
@@ -114,7 +117,15 @@ export default function WorkoutPage() {
       const groups = split === 'Push' || split === 'Chest & Tri' ? ['Chest', 'Shoulders', 'Triceps']
         : split === 'Pull' || split === 'Back & Bi' ? ['Back Width', 'Back Thickness', 'Biceps']
           : split === 'Legs' || split === 'Lower' ? ['Legs'] : split === 'Upper' ? ['Chest', 'Back Width', 'Shoulders', 'Biceps'] : null;
-      const starterExercises = GYM_EXERCISES.filter(ex => !groups || groups.includes(ex.muscleGroup)).slice(0, 4).map(ex => ({
+      const starterExercises = plannedExercises?.length ? plannedExercises.map(ex => ({
+        id: ex.id || ex.name,
+        name: ex.name,
+        sets: Number(ex.sets) || 3,
+        reps: Number(ex.reps) || 8,
+        rest: Number(ex.restSeconds ?? ex.rest) || 90,
+        defaultWeight: Number(ex.weightKg) || 0,
+        defaultReps: Number(ex.reps) || 8,
+      })) : GYM_EXERCISES.filter(ex => !groups || groups.includes(ex.muscleGroup)).slice(0, 4).map(ex => ({
         id: ex.id, name: ex.name, sets: 3, reps: 8, rest: 90, defaultWeight: 0, defaultReps: 8,
       }));
       setActiveSession({ ...session, split: session.name || split, exercises: starterExercises });
@@ -126,6 +137,19 @@ export default function WorkoutPage() {
       setCreating(false);
     }
   }
+
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('dp_autopilot_workout_pending');
+      if (!raw) return;
+      const pending = JSON.parse(raw);
+      if (pending?.userKey !== userKey || !pending?.exercises?.length) return;
+      sessionStorage.removeItem('dp_autopilot_workout_pending');
+      startSession(pending.split || 'Autopilot Workout', pending.exercises);
+    } catch {
+      sessionStorage.removeItem('dp_autopilot_workout_pending');
+    }
+  }, [userKey]);
 
   async function logSet(workoutId, setData) {
     const key = `${workoutId}:${setData.exerciseName}:${setData.setNumber}`;

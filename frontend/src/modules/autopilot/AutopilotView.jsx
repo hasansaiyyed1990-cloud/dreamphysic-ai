@@ -53,6 +53,7 @@ export default function AutopilotView({ onNavigate }) {
   const { user } = useAuth() ?? {};
   const userKey = user?.id || user?.email || 'default';
   const savedPlansKey = `dp_saved_plans_${userKey}`;
+  const workoutHandoffKey = `dp_autopilot_workout_${userKey}`;
 
   const [plan, setPlan] = useState(null);
   const [mode, setMode] = useState('FULL');
@@ -150,9 +151,13 @@ export default function AutopilotView({ onNavigate }) {
   }
 
   function saveCurrentPlan() {
+    const requestedTitle = window.prompt('Plan ka naam kya rakhein?', plan?.workout?.split || 'Custom Split');
+    if (requestedTitle === null) return;
+    const title = requestedTitle.trim();
+    if (!title) return;
     const entry = {
       id: Date.now(),
-      title: plan?.workout?.split || 'Custom Split',
+      title,
       mode,
       exercises,
       savedAt: new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }),
@@ -181,6 +186,19 @@ export default function AutopilotView({ onNavigate }) {
       localStorage.setItem(savedPlansKey, JSON.stringify(next));
     } catch {
       // ignore
+    }
+  }
+
+  function startAutopilotWorkout() {
+    try {
+      sessionStorage.setItem('dp_autopilot_workout_pending', JSON.stringify({
+        userKey,
+        split: splitTitle,
+        exercises: exercises.map((ex) => ({ ...ex })),
+      }));
+      onNavigate?.('workout');
+    } catch {
+      showToast('Could not prepare workout. Please retry.');
     }
   }
 
@@ -215,31 +233,31 @@ export default function AutopilotView({ onNavigate }) {
         }}
       >
         <div className="flex items-center gap-4">
-          <CircularProgress value={88} max={100} size={82} strokeWidth={7} color="#2dd4bf">
+          <CircularProgress value={0} max={100} size={82} strokeWidth={7} color="#2dd4bf">
             <div className="text-center">
-              <p className="tab-num text-base font-bold text-white leading-none">88%</p>
-              <p className="text-[10px] text-teal font-semibold mt-0.5">Ready</p>
+              <p className="tab-num text-base font-bold text-white leading-none">—</p>
+              <p className="text-[10px] text-teal font-semibold mt-0.5">Readiness</p>
             </div>
           </CircularProgress>
 
           <div className="flex-1 min-w-0">
-            <h2 className="text-lg font-bold text-white">High Recovery Day</h2>
+            <h2 className="text-lg font-bold text-white">{plan?.recoveryStatus || 'Recovery not logged'}</h2>
             <p className="text-xs text-muted mt-0.5">
-              {plan?.recoveryReason || 'Great sleep & balanced load — ready for progressive overload.'}
+              {plan?.recoveryReason || 'Sleep, soreness, and energy data are not available yet.'}
             </p>
             <div className="flex flex-wrap gap-1.5 mt-2">
-              <Badge color="teal">😴 7.6h Sleep</Badge>
-              <Badge color="gold">🔥 Consistent Streak</Badge>
+              <Badge color="teal">😴 {plan?.sleepHours != null ? `${plan.sleepHours}h Sleep` : 'Sleep not logged'}</Badge>
+              <Badge color="gold">🔥 {plan?.streakDays != null ? `${plan.streakDays}-day streak` : 'Streak unavailable'}</Badge>
             </div>
           </div>
         </div>
 
         <div className="grid grid-cols-4 gap-2 pt-1">
           {[
-            { label: 'HRV', val: '68 ms' },
-            { label: 'Energy', val: '8.5/10' },
-            { label: 'Recovery', val: '88%' },
-            { label: 'Soreness', val: 'Low' },
+            { label: 'HRV', val: plan?.hrv != null ? `${plan.hrv} ms` : 'Not logged' },
+            { label: 'Energy', val: plan?.energy != null ? `${plan.energy}/10` : 'Not logged' },
+            { label: 'Recovery', val: plan?.recoveryStatus || 'Not assessed' },
+            { label: 'Soreness', val: plan?.soreness || 'Not logged' },
           ].map((s) => (
             <div
               key={s.label}
@@ -473,10 +491,10 @@ export default function AutopilotView({ onNavigate }) {
       {/* Primary CTA */}
       <button
         type="button"
-        onClick={() => onNavigate?.('workout')}
+        onClick={startAutopilotWorkout}
         className="w-full btn-teal flex items-center justify-center gap-2 py-3.5 text-sm"
       >
-        <Play size={16} /> Start This Workout
+        <Play size={16} /> Start Autopilot Workout
       </button>
     </div>
   );

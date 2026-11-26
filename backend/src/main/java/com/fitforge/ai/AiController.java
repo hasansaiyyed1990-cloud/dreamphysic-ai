@@ -31,7 +31,7 @@ import org.springframework.web.bind.annotation.*;
     public ApiResponse<String> workout(@Valid @RequestBody AiDtos.PromptRequest r, Authentication auth) {
         String email = auth.getName();
         quota.enforce(email);
-        String advice = service.workoutAdvice(email, r.prompt(), context.load(email));
+        String advice = service.workoutAdvice(email, r.prompt(), context.load(email, r.prompt()));
         history.record(email, "WORKOUT_ADVICE", r.prompt(), advice);
         return ApiResponse.ok("Workout advice generated", advice);
     }
@@ -40,7 +40,7 @@ import org.springframework.web.bind.annotation.*;
     public ApiResponse<String> diet(@Valid @RequestBody AiDtos.PromptRequest r, Authentication auth) {
         String email = auth.getName();
         quota.enforce(email);
-        String plan = service.dietPlan(email, r.prompt(), context.load(email));
+        String plan = service.dietPlan(email, r.prompt(), context.load(email, r.prompt()));
         history.record(email, "DIET_PLAN", r.prompt(), plan);
         return ApiResponse.ok("Diet plan generated", plan);
     }

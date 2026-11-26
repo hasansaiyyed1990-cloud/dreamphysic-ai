@@ -45,6 +45,10 @@ public class AiLiveContextService {
     }
 
     public LiveContext load(String email) {
+        return load(email, null);
+    }
+
+    public LiveContext load(String email, String userQuestion) {
         var weight = weights.findTopByUserEmailOrderByDateDesc(email);
         int calories = users.findByEmail(email).map(u -> u.getTargetCalories()).orElse(1800);
         var recent = sets.findByUserEmailOrderByWorkoutDateDesc(email, PageRequest.of(0, 12));
@@ -91,12 +95,12 @@ public class AiLiveContextService {
         Double targetWeight = mission.map(FatLossMission::getTargetWeightKg).orElse(null);
         String targetDate = mission.map(m -> m.getRevisedDeadline().toString()).orElse(null);
         if (coachContextBuilder != null) {
-            UserCoachContextBuilder.CoachContext coach = coachContextBuilder.build(email);
+            UserCoachContextBuilder.CoachContext coach = coachContextBuilder.build(email, userQuestion);
             b.append("\n").append(coach.promptBlock()).append("\n");
             if (formulaEngine != null) b.append(formulaEngine.build(coach)).append("\n");
         }
         if (chatHistory != null) {
-            String recentChat = chatHistory.recentBlock(email, 3);
+            String recentChat = chatHistory.recentBlock(email, 10);
             if (!recentChat.isBlank()) {
                 b.append("\n[RECENT COACH CHAT - only for follow-up continuity, never repeat or contradict it]\n")
                         .append(recentChat).append("[/RECENT COACH CHAT]\n");
