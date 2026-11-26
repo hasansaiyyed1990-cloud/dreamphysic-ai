@@ -1,4 +1,5 @@
 import React, { memo } from 'react';
+import { DAY_ONE_EMPTY_STATES, SCIENCE_TOOLTIPS } from '../content/index.js';
 
 export const GlassCard = memo(({ children, className = '', accent = '' }) => {
   const border =
@@ -143,6 +144,32 @@ export function Badge({ children, color = 'teal' }) {
 
 export function Divider({ className = '' }) {
   return <div className={`border-t border-white/5 ${className}`} />;
+}
+
+export function ContentEmptyState({ section, variant, onAction }) {
+  const base = DAY_ONE_EMPTY_STATES[section];
+  const copy = variant ? base?.[variant] : base;
+  if (!copy) return null;
+  return (
+    <div className="text-center py-8 px-4">
+      <p className="text-white text-sm font-semibold">{copy.title.en}</p>
+      <p className="text-muted text-xs mt-2">{copy.subtitle.en}</p>
+      {onAction && <button type="button" onClick={onAction} className="text-teal text-xs font-semibold mt-3">{copy.cta.en}</button>}
+    </div>
+  );
+}
+
+export function ScienceTooltip({ name }) {
+  const tip = SCIENCE_TOOLTIPS[name];
+  if (!tip) return null;
+  return (
+    <details className="inline-block ml-1 text-muted text-xs align-middle">
+      <summary className="cursor-pointer list-none rounded-full border border-white/15 w-5 h-5 text-center">i</summary>
+      <span className="absolute z-10 max-w-[260px] rounded-lg bg-slate-900 border border-white/10 p-3 text-xs text-white shadow-xl">
+        {tip.lines.en.join(' ')}
+      </span>
+    </details>
+  );
 }
 
 export class ErrorBoundary extends React.Component {

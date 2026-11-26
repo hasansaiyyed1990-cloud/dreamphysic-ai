@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback, memo, useRef } from 'react';
 import { Heart, Play, Pause, Square, Camera, Upload, ChevronRight, Bike, Footprints, Waves, Zap, Timer, Flame, MapPin } from 'lucide-react';
 import { api, apiUpload } from '../../shared/api.js';
-import { GlassCard, TealButton, GhostButton, Spinner, ErrorMsg, Badge, Chip, CircularProgress } from '../../shared/ui.jsx';
+import { GlassCard, TealButton, GhostButton, Spinner, ErrorMsg, Badge, Chip, CircularProgress, ContentEmptyState } from '../../shared/ui.jsx';
+import { getLocalIstDateString } from '../../shared/date.js';
+import { HIIT_CIRCUIT_TEMPLATES, HIIT_EXERCISES } from './hiitBodyweightDb.js';
 
 // Isolated live timer — never re-renders parent
 const LiveTimer = memo(({ running }) => {
@@ -39,38 +41,63 @@ export default function CardioPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [timerRunning, setTimerRunning] = useState(false);
-  const [form, setForm] = useState({ distanceKm: '', durationMin: '', notes: '', date: new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) });
+  const [form, setForm] = useState({ distanceKm: '', durationMin: '', notes: '', date: getLocalIstDateString() });
   const [saving, setSaving] = useState(false);
   const [importingPhoto, setImportingPhoto] = useState(false);
   const fileRef = useRef(null);
   const [aiReport, setAiReport] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const [selectedCircuit, setSelectedCircuit] = useState(HIIT_CIRCUIT_TEMPLATES[0]?.id || '');
+  const loadControllerRef = useRef(null);
+  const reportControllerRef = useRef(null);
+  const photoControllerRef = useRef(null);
+  const photoRequestIdRef = useRef(0);
 
   const load = useCallback(async () => {
+    loadControllerRef.current?.abort();
+    const controller = new AbortController();
+    loadControllerRef.current = controller;
     setLoading(true);
     try {
       const [sess, ov, g] = await Promise.allSettled([
-        api('/cardio'),
-        api('/cardio/overview'),
-        api('/cardio/goals'),
+        api('/cardio', { signal: controller.signal }),
+        api('/cardio/overview', { signal: controller.signal }),
+        api('/cardio/goals', { signal: controller.signal }),
       ]);
+      if (controller.signal.aborted) return;
       if (sess.status === 'fulfilled') setSessions(Array.isArray(sess.value) ? sess.value : []);
       if (ov.status === 'fulfilled') setOverview(ov.value);
       if (g.status === 'fulfilled') setGoals(g.value);
     } catch (e) {
-      setError(e.message);
+      if (e.name !== 'AbortError') setError(e.message);
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); return () => { loadControllerRef.current?.abort(); reportControllerRef.current?.abort(); photoControllerRef.current?.abort(); }; }, [load]);
+
+  useEffect(() => {
+    if (tab !== 'ai') reportControllerRef.current?.abort();
+  }, [tab]);
 
   async function logCardio(e) {
     e.preventDefault();
+    const distance = Number.parseFloat(form.distanceKm);
+    const durationMinutes = Number.parseInt(form.durationMin, 10);
+    if (!Number.isFinite(distance) || distance < 0 || !Number.isFinite(durationMinutes) || durationMinutes < 1) {
+      setError('Enter a valid distance and a duration of at least one minute.');
+      return;
+    }
     setSaving(true);
     try {
-      await api('/cardio', { method: 'POST', body: { ...form, type: mode, distanceKm: parseFloat(form.distanceKm) || null, durationMin: parseInt(form.durationMin) || null } });
+      const activity = { run: 'RUNNING', cycle: 'CYCLING', swim: 'SWIMMING', hiit: 'HIIT', walk: 'WALKING' }[mode];
+      const sessionDate = `${form.date}T${new Date().toTimeString().slice(0, 8)}`;
+      await api('/cardio', { method: 'POST', body: {
+        distanceKm: distance, durationMinutes, activity, sessionDate,
+        caloriesBurned: calories || 0, notes: mode === 'hiit' ? `${form.notes}${form.notes ? ' · ' : ''}${HIIT_CIRCUIT_TEMPLATES.find(c => c.id === selectedCircuit)?.name || 'HIIT circuit'}` : form.notes,
+        source: 'MANUAL',
+      } });
       setForm(f => ({ ...f, distanceKm: '', durationMin: '', notes: '' }));
       load();
     } catch (err) {
@@ -83,34 +110,55 @@ export default function CardioPage() {
   async function importScreenshot(e) {
     const file = e.target.files[0];
     if (!file) return;
+    const requestId = ++photoRequestIdRef.current;
+    photoControllerRef.current?.abort();
+    const controller = new AbortController();
+    photoControllerRef.current = controller;
     setImportingPhoto(true);
     try {
-      const result = await apiUpload('/cardio/import-screenshot', { file });
-      setForm(f => ({ ...f, distanceKm: result.distanceKm || f.distanceKm, durationMin: result.durationMin || f.durationMin }));
+      // The selected File is streamed directly; screenshots are not persisted in web storage.
+      const result = await apiUpload('/cardio/import-screenshot', { file, signal: controller.signal });
+      if (!result.isCardioScreenshot || !['high', 'medium'].includes(String(result.confidence).toLowerCase())) throw new Error(result.warning || 'Upload a clearer cardio workout summary.');
+      if (!controller.signal.aborted && photoRequestIdRef.current === requestId) setForm(f => ({
+        ...f,
+        distanceKm: result.distanceKm ?? f.distanceKm,
+        durationMin: result.durationSeconds ? Math.max(1, Math.round(result.durationSeconds / 60)) : f.durationMin,
+        date: result.sessionDate || f.date,
+        notes: result.notes || f.notes,
+      }));
     } catch (err) {
-      setError(err.message);
+      if (err.name !== 'AbortError') setError(err.message);
     } finally {
-      setImportingPhoto(false);
+      if (photoRequestIdRef.current === requestId) setImportingPhoto(false);
+      e.target.value = '';
     }
   }
 
   async function loadAiReport() {
+    reportControllerRef.current?.abort();
+    const controller = new AbortController();
+    reportControllerRef.current = controller;
     setAiLoading(true);
     try {
-      const r = await api('/cardio/ai/weekly-report');
-      setAiReport(r);
+      const r = await api('/cardio/ai/weekly-report', { signal: controller.signal });
+      if (!controller.signal.aborted) setAiReport(r);
     } catch (e) {
-      setError(e.message);
+      if (e.name !== 'AbortError') setError(e.message);
     } finally {
-      setAiLoading(false);
+      if (!controller.signal.aborted) setAiLoading(false);
     }
   }
 
-  const pace = form.distanceKm && form.durationMin
-    ? (parseFloat(form.durationMin) / parseFloat(form.distanceKm)).toFixed(1)
+  const validDistance = Number.parseFloat(form.distanceKm);
+  const validDuration = Number.parseFloat(form.durationMin);
+  const pace = Number.isFinite(validDistance) && validDistance > 0 && Number.isFinite(validDuration) && validDuration > 0
+    ? (validDuration / validDistance).toFixed(1)
     : null;
 
-  const calories = form.durationMin ? Math.round(parseInt(form.durationMin) * (mode === 'run' ? 10 : mode === 'cycle' ? 7 : 8)) : null;
+  const calories = Number.isFinite(validDuration) && validDuration > 0
+    ? Math.round(validDuration * (mode === 'run' ? 10 : mode === 'cycle' ? 7 : 8))
+    : null;
+  const weeklyDistance = Number.isFinite(Number(overview?.weeklyDistanceKm)) ? Number(overview.weeklyDistanceKm) : 0;
 
   if (loading) return <div className="flex items-center justify-center min-h-[80vh]"><Spinner size={36} /></div>;
 
@@ -125,17 +173,17 @@ export default function CardioPage() {
         <div className="grid grid-cols-3 gap-3">
           <GlassCard className="text-center py-3">
             <Flame size={18} className="text-gold mx-auto mb-1" />
-            <p className="tab-num text-gold font-bold text-lg">{overview.weeklyCalories || 0}</p>
-            <p className="text-muted text-[10px]">kcal/week</p>
+            <p className="tab-num text-gold font-bold text-lg">{overview.todayCalories || 0}</p>
+            <p className="text-muted text-[10px]">kcal today</p>
           </GlassCard>
           <GlassCard className="text-center py-3">
             <MapPin size={18} className="text-teal mx-auto mb-1" />
-            <p className="tab-num text-teal font-bold text-lg">{overview.weeklyDistanceKm?.toFixed(1) || 0}</p>
+            <p className="tab-num text-teal font-bold text-lg">{weeklyDistance.toFixed(1)}</p>
             <p className="text-muted text-[10px]">km/week</p>
           </GlassCard>
           <GlassCard className="text-center py-3">
             <Timer size={18} className="text-purple mx-auto mb-1" />
-            <p className="tab-num text-purple font-bold text-lg">{overview.sessionsThisWeek || 0}</p>
+            <p className="tab-num text-purple font-bold text-lg">{overview.weeklySessions || 0}</p>
             <p className="text-muted text-[10px]">sessions</p>
           </GlassCard>
         </div>
@@ -192,6 +240,16 @@ export default function CardioPage() {
           <GlassCard>
             <h3 className="font-semibold text-white mb-3">Log {MODES.find(m => m.id === mode)?.label}</h3>
             <form onSubmit={logCardio} className="space-y-3">
+              {mode === 'hiit' && <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                <label className="block text-xs text-muted mb-2">Bodyweight circuit preset</label>
+                <select value={selectedCircuit} onChange={e => setSelectedCircuit(e.target.value)} className="w-full rounded-lg bg-slate-900 border border-white/10 p-3 text-white text-base">
+                  {HIIT_CIRCUIT_TEMPLATES.map(circuit => <option key={circuit.id} value={circuit.id}>{circuit.name} · {circuit.durationMinutes} min</option>)}
+                </select>
+                <div className="mt-2 flex flex-wrap gap-1.5">{(HIIT_CIRCUIT_TEMPLATES.find(c => c.id === selectedCircuit)?.exerciseIds || []).map(id => {
+                  const exercise = HIIT_EXERCISES.find(item => item.id === id);
+                  return exercise ? <Badge key={id} color="muted">{exercise.name}</Badge> : null;
+                })}</div>
+              </div>}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-muted block mb-1.5">Distance (km)</label>
@@ -243,19 +301,19 @@ export default function CardioPage() {
           {sessions.length === 0 ? (
             <div className="text-center py-12 text-muted">
               <Heart size={36} className="mx-auto mb-3 opacity-30" />
-              <p>No cardio sessions yet.</p>
+              <ContentEmptyState section="cardio" />
             </div>
           ) : sessions.slice(0, 20).map((s, i) => (
             <GlassCard key={i}>
               <div className="flex items-center justify-between">
                 <div>
-                  <Badge color={s.type === 'run' ? 'teal' : 'purple'}>{s.type?.toUpperCase()}</Badge>
+                  <Badge color={s.activity === 'RUNNING' ? 'teal' : 'purple'}>{s.activity?.replaceAll('_', ' ')}</Badge>
                   <div className="flex gap-3 mt-1.5">
                     {s.distanceKm && <span className="tab-num text-white font-bold">{s.distanceKm}km</span>}
-                    {s.durationMin && <span className="text-muted text-sm">{s.durationMin}min</span>}
+                    {s.durationMinutes && <span className="text-muted text-sm">{s.durationMinutes}min</span>}
                     {s.caloriesBurned && <span className="text-gold text-sm">{s.caloriesBurned}kcal</span>}
                   </div>
-                  <p className="text-muted text-xs mt-0.5">{s.date}</p>
+                  <p className="text-muted text-xs mt-0.5">{s.sessionDate?.slice(0, 10)}</p>
                 </div>
               </div>
             </GlassCard>

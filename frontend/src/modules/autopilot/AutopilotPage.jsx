@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback, memo } from 'react';
+import React, { useState, useEffect, useCallback, memo, useRef } from 'react';
 import { Navigation, Zap, Droplets, CheckCircle, Circle, ChevronRight, RefreshCw, MessageCircle, Plus, Minus } from 'lucide-react';
 import { api } from '../../shared/api.js';
 import { GlassCard, TealButton, PurpleButton, GhostButton, Spinner, ErrorMsg, Badge, CircularProgress } from '../../shared/ui.jsx';
+import { getLocalIstDateString } from '../../shared/date.js';
 
 // Isolated hydration stepper — doesn't re-render parent
 const HydrationStepper = memo(({ value, onChange }) => (
@@ -19,6 +20,12 @@ const HydrationStepper = memo(({ value, onChange }) => (
   </div>
 ));
 
+const normalizeHydration = value => ({
+  ...(value || {}),
+  waterMl: Number(value?.waterMl) || 0,
+  goalMl: Number(value?.waterGoalMl ?? value?.goalMl) || 3000,
+});
+
 export default function AutopilotPage() {
   const [plan, setPlan] = useState(null);
   const [briefing, setBriefing] = useState(null);
@@ -30,34 +37,85 @@ export default function AutopilotPage() {
   const [savingHydration, setSavingHydration] = useState(false);
   const [askingCoach, setAskingCoach] = useState(false);
   const [generating, setGenerating] = useState(false);
-
-  const dateIST = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+  const dateIST = getLocalIstDateString();
+  const loadControllerRef = useRef(null);
+  const hydrationControllerRef = useRef(null);
+  const hydrationTimerRef = useRef(null);
+  const revisionRef = useRef(0);
+  const syncedRevision = useRef(0);
+  const hydrationRef = useRef(null);
+  const visibilitySyncAtRef = useRef(0);
 
   const load = useCallback(async () => {
+    loadControllerRef.current?.abort();
+    const controller = new AbortController();
+    loadControllerRef.current = controller;
     setLoading(true);
     try {
       const [p, b, h] = await Promise.allSettled([
-        api('/autopilot/today'),
-        api('/autopilot/briefing'),
-        api('/nutrition/hydration/' + dateIST),
+        api('/autopilot/today', { signal: controller.signal }),
+        api('/autopilot/briefing', { signal: controller.signal }),
+        api('/nutrition/hydration/' + dateIST, { signal: controller.signal }),
       ]);
+      if (controller.signal.aborted) return;
       if (p.status === 'fulfilled') setPlan(p.value);
       if (b.status === 'fulfilled') setBriefing(b.value);
-      if (h.status === 'fulfilled') setHydration(h.value || { waterMl: 0, goalMl: 3000 });
+      if (h.status === 'fulfilled') {
+        const next = normalizeHydration(h.value);
+        setHydration(next);
+        hydrationRef.current = next;
+        revisionRef.current = 0;
+        syncedRevision.current = 0;
+      }
     } catch (e) {
-      setError(e.message);
+      if (e.name !== 'AbortError') setError(e.message);
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); return () => { loadControllerRef.current?.abort(); hydrationControllerRef.current?.abort(); clearTimeout(hydrationTimerRef.current); }; }, [load]);
+
+  const syncHydration = useCallback(async (revision) => {
+    const current = hydrationRef.current;
+    if (!current || revision <= syncedRevision.current || !navigator.onLine) return;
+    hydrationControllerRef.current?.abort();
+    const controller = new AbortController();
+    hydrationControllerRef.current = controller;
+    setSavingHydration(true);
+    try {
+      await api('/nutrition/hydration/' + dateIST, { method: 'POST', body: { waterMl: current.waterMl }, signal: controller.signal });
+      syncedRevision.current = Math.max(syncedRevision.current, revision);
+      if (revisionRef.current > syncedRevision.current) {
+        clearTimeout(hydrationTimerRef.current);
+        hydrationTimerRef.current = setTimeout(() => syncHydration(revisionRef.current), 600);
+      }
+    } catch (e) {
+      if (e.name !== 'AbortError') setError(e.message);
+    } finally {
+      if (!controller.signal.aborted) setSavingHydration(false);
+    }
+  }, [dateIST]);
+
+  useEffect(() => {
+    const retryPending = () => {
+      const now = Date.now();
+      if (document.visibilityState === 'visible' && now - visibilitySyncAtRef.current >= 10_000 && revisionRef.current > syncedRevision.current) {
+        visibilitySyncAtRef.current = now;
+        syncHydration(revisionRef.current);
+      }
+    };
+    window.addEventListener('online', retryPending);
+    document.addEventListener('visibilitychange', retryPending);
+    return () => { window.removeEventListener('online', retryPending); document.removeEventListener('visibilitychange', retryPending); };
+  }, [syncHydration]);
 
   async function generatePlan() {
     setGenerating(true);
     try {
       const p = await api('/autopilot/today/generate', { method: 'POST', body: {} });
-      setPlan(p);
+      const previous = new Map((plan?.tasks || []).map(task => [task.id ?? `${task.category}:${task.description || task.task}`, task.completed]));
+      setPlan({ ...p, tasks: (p.tasks || []).map(task => ({ ...task, completed: task.completed || previous.get(task.id ?? `${task.category}:${task.description || task.task}`) || false })) });
     } catch (e) {
       setError(e.message);
     } finally {
@@ -66,15 +124,12 @@ export default function AutopilotPage() {
   }
 
   async function logHydration(ml) {
-    setSavingHydration(true);
-    try {
-      await api('/nutrition/hydration/' + dateIST, { method: 'POST', body: { waterMl: ml } });
-      setHydration(h => ({ ...h, waterMl: ml }));
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setSavingHydration(false);
-    }
+    const next = { ...(hydrationRef.current || hydration), waterMl: ml };
+    hydrationRef.current = next;
+    setHydration(next);
+    const revision = ++revisionRef.current;
+    clearTimeout(hydrationTimerRef.current);
+    hydrationTimerRef.current = setTimeout(() => syncHydration(revision), 600);
   }
 
   async function askCoach() {
@@ -185,6 +240,7 @@ export default function AutopilotPage() {
           <span className="tab-num text-teal text-sm font-bold">{hydPct.toFixed(0)}%</span>
         </div>
         <HydrationStepper value={hydration.waterMl} onChange={(v) => logHydration(v)} />
+        {savingHydration && <p className="text-muted text-[10px] text-center mt-1">Syncing water log…</p>}
         <div className="mt-3 h-2 rounded-full bg-white/10 overflow-hidden">
           <div className="h-full rounded-full bg-teal transition-all" style={{ width: `${hydPct}%`, willChange: 'width' }} />
         </div>

@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback, memo, useRef } from 'react';
 import { Dumbbell, Plus, Play, ChevronRight, ChevronDown, RotateCcw, Check, Minus, Info, Repeat2 } from 'lucide-react';
 import { api } from '../../shared/api.js';
-import { GlassCard, TealButton, GhostButton, Spinner, ErrorMsg, Badge, Chip } from '../../shared/ui.jsx';
+import { GlassCard, TealButton, GhostButton, Spinner, ErrorMsg, Badge, Chip, ContentEmptyState, ScienceTooltip } from '../../shared/ui.jsx';
+import { GYM_EXERCISES } from './gymExerciseSwapDb.js';
+import { scheduleRestTimerCompletion } from '../../shared/restTimerNotification.js';
 
 // Isolated stepper — won't re-render parent on tick
-const SetRow = memo(({ set, onChange, onDone }) => {
+const SetRow = memo(({ set, onChange, onDone, disabled = false }) => {
   const [weight, setWeight] = useState(String(set.weightKg || ''));
   const [reps, setReps] = useState(String(set.reps || ''));
   return (
@@ -27,7 +29,7 @@ const SetRow = memo(({ set, onChange, onDone }) => {
         className="w-16 px-2 py-1.5 rounded-lg text-white text-sm text-center outline-none"
         style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
       />
-      <button onClick={() => onDone(set)} className="ml-auto w-7 h-7 rounded-full bg-teal/10 border border-teal/30 flex items-center justify-center">
+      <button disabled={disabled} onClick={() => onDone(set)} className="ml-auto w-7 h-7 rounded-full bg-teal/10 border border-teal/30 flex items-center justify-center disabled:opacity-40">
         <Check size={12} className="text-teal" />
       </button>
     </div>
@@ -43,6 +45,11 @@ const RestTimer = memo(({ seconds: initSec, onDone }) => {
     ref.current = setInterval(() => setSec(s => s - 1), 1000);
     return () => clearInterval(ref.current);
   }, []);
+  useEffect(() => {
+    let cancelNotification;
+    scheduleRestTimerCompletion(initSec).then(cancel => { cancelNotification = cancel; });
+    return () => cancelNotification?.();
+  }, [initSec]);
   const mins = Math.floor(sec / 60);
   const secs = sec % 60;
   return (
@@ -69,32 +76,49 @@ export default function WorkoutPage() {
   const [restTimer, setRestTimer] = useState(null);
   const [savingSet, setSavingSet] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [completedSetKeys, setCompletedSetKeys] = useState([]);
+  const [swapHistory, setSwapHistory] = useState(null);
+  const loadControllerRef = useRef(null);
+  const swapControllerRef = useRef(null);
+  const inFlightSetKeysRef = useRef(new Set());
 
   const load = useCallback(async () => {
+    loadControllerRef.current?.abort();
+    const controller = new AbortController();
+    loadControllerRef.current = controller;
     setLoading(true);
     try {
       const [sess, lib, g] = await Promise.allSettled([
-        api('/workouts'),
-        api('/workouts/library'),
-        api('/workouts/goals'),
+        api('/workouts', { signal: controller.signal }),
+        api('/workouts/library', { signal: controller.signal }),
+        api('/workouts/goals', { signal: controller.signal }),
       ]);
+      if (controller.signal.aborted) return;
       if (sess.status === 'fulfilled') setSessions(Array.isArray(sess.value) ? sess.value : []);
       if (lib.status === 'fulfilled') setLibrary(Array.isArray(lib.value) ? lib.value : []);
       if (g.status === 'fulfilled') setGoals(g.value);
     } catch (e) {
-      setError(e.message);
+      if (e.name !== 'AbortError') setError(e.message);
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); return () => { loadControllerRef.current?.abort(); swapControllerRef.current?.abort(); }; }, [load]);
 
   async function startSession(split) {
     setCreating(true);
     try {
-      const session = await api('/workouts', { method: 'POST', body: { split, startedAt: new Date().toISOString() } });
-      setActiveSession(session);
+      const sessionDate = new Date().toISOString().slice(0, 19);
+      const session = await api('/workouts', { method: 'POST', body: { name: split, sessionDate } });
+      const groups = split === 'Push' || split === 'Chest & Tri' ? ['Chest', 'Shoulders', 'Triceps']
+        : split === 'Pull' || split === 'Back & Bi' ? ['Back Width', 'Back Thickness', 'Biceps']
+          : split === 'Legs' || split === 'Lower' ? ['Legs'] : split === 'Upper' ? ['Chest', 'Back Width', 'Shoulders', 'Biceps'] : null;
+      const starterExercises = GYM_EXERCISES.filter(ex => !groups || groups.includes(ex.muscleGroup)).slice(0, 4).map(ex => ({
+        id: ex.id, name: ex.name, sets: 3, reps: 8, rest: 90, defaultWeight: 0, defaultReps: 8,
+      }));
+      setActiveSession({ ...session, split: session.name || split, exercises: starterExercises });
+      setCompletedSetKeys([]);
       load();
     } catch (e) {
       setError(e.message);
@@ -104,14 +128,40 @@ export default function WorkoutPage() {
   }
 
   async function logSet(workoutId, setData) {
+    const key = `${workoutId}:${setData.exerciseName}:${setData.setNumber}`;
+    if (completedSetKeys.includes(key) || inFlightSetKeysRef.current.has(key)) return;
+    inFlightSetKeysRef.current.add(key);
     setSavingSet(true);
     try {
-      await api(`/workouts/${workoutId}/sets`, { method: 'POST', body: setData });
+      await api(`/workouts/${workoutId}/sets`, { method: 'POST', body: {
+        exerciseName: setData.exerciseName,
+        setNumber: setData.setNumber,
+        reps: setData.reps,
+        weightKg: setData.weightKg,
+        restSeconds: setData.restSeconds,
+      } });
+      setCompletedSetKeys(keys => keys.includes(key) ? keys : [...keys, key]);
       setRestTimer(90);
     } catch (e) {
+      if (/409|conflict/i.test(e.message)) setCompletedSetKeys(keys => keys.includes(key) ? keys : [...keys, key]);
+      else inFlightSetKeysRef.current.delete(key);
       setError(e.message);
     } finally {
+      if (completedSetKeys.includes(key)) inFlightSetKeysRef.current.delete(key);
       setSavingSet(false);
+    }
+  }
+
+  async function lookupSwapHistory(exerciseName) {
+    swapControllerRef.current?.abort();
+    const controller = new AbortController();
+    swapControllerRef.current = controller;
+    setSwapHistory({ exerciseName, sets: [], loading: true });
+    try {
+      const rows = await api(`/workouts/last-session/sets?exerciseName=${encodeURIComponent(exerciseName)}`, { signal: controller.signal });
+      if (!controller.signal.aborted) setSwapHistory({ exerciseName, sets: Array.isArray(rows) ? rows : [], loading: false });
+    } catch (e) {
+      if (e.name !== 'AbortError') setError(e.message);
     }
   }
 
@@ -165,9 +215,10 @@ export default function WorkoutPage() {
                   {Array.from({ length: ex.sets }, (_, si) => (
                     <SetRow
                       key={si}
-                      set={{ setNumber: si + 1, weightKg: ex.defaultWeight, reps: ex.defaultReps, exerciseId: ex.id }}
+                      set={{ setNumber: si + 1, weightKg: ex.defaultWeight, reps: ex.defaultReps, restSeconds: ex.rest }}
                       onChange={() => {}}
-                      onDone={(s) => logSet(activeSession.id, { ...s, exerciseName: ex.name })}
+                      disabled={savingSet || completedSetKeys.includes(`${activeSession.id}:${ex.name}:${si + 1}`)}
+                      onDone={(s) => logSet(activeSession.id, { ...s, exerciseName: ex.name, restSeconds: ex.rest })}
                     />
                   ))}
                 </div>
@@ -208,15 +259,15 @@ export default function WorkoutPage() {
           {sessions.length === 0 ? (
             <div className="text-center py-12 text-muted">
               <Dumbbell size={36} className="mx-auto mb-3 opacity-30" />
-              <p>No sessions yet. Start your first workout!</p>
+              <ContentEmptyState section="workout" onAction={() => setTab('today')} />
             </div>
           ) : sessions.slice(0, 20).map((s, i) => (
             <GlassCard key={i}>
               <div className="flex items-center justify-between">
                 <div>
-                  <Badge color="muted">{s.startedAt?.slice(0, 10)}</Badge>
-                  <h4 className="text-white font-semibold mt-1">{s.split}</h4>
-                  <p className="text-muted text-xs mt-0.5">{s.totalSets || 0} sets · {s.totalVolume ? s.totalVolume.toFixed(0) + 'kg vol' : ''}</p>
+                  <Badge color="muted">{s.sessionDate?.slice(0, 10)}</Badge>
+                  <h4 className="text-white font-semibold mt-1">{s.name}</h4>
+                  <p className="text-muted text-xs mt-0.5">{s.sets?.length || 0} sets · {(s.sets || []).reduce((sum, set) => sum + Number(set.weightKg || 0) * Number(set.reps || 0), 0).toFixed(0)} kg volume</p>
                 </div>
                 <Repeat2 size={18} className="text-muted" />
               </div>
@@ -227,6 +278,18 @@ export default function WorkoutPage() {
 
       {tab === 'library' && (
         <div className="space-y-3">
+          <GlassCard>
+            <h3 className="text-white font-semibold mb-2">Exercise swaps <ScienceTooltip name="warmupVsWorkingSets" /></h3>
+            <p className="text-muted text-xs mb-3">Choose a similar movement to compare your previous working sets.</p>
+            <select className="w-full rounded-lg bg-white/5 border border-white/10 p-3 text-white" defaultValue="" onChange={e => e.target.value && lookupSwapHistory(e.target.value)}>
+              <option value="">Choose an exercise</option>
+              {GYM_EXERCISES.map(ex => <option key={ex.id} value={ex.name}>{ex.muscleGroup}: {ex.name}</option>)}
+            </select>
+            {swapHistory && <div className="mt-3 text-xs text-muted">
+              <p className="text-white font-semibold">{swapHistory.exerciseName}{swapHistory.loading ? ' · Loading…' : ''}</p>
+              {!swapHistory.loading && (swapHistory.sets.length ? swapHistory.sets.map((s, i) => <p key={`${s.setNumber}-${i}`}>Set {s.setNumber}: {s.weightKg} kg × {s.reps} reps</p>) : <p>No saved sets for this exercise yet.</p>)}
+            </div>}
+          </GlassCard>
           {library.map((ex, i) => (
             <GlassCard key={i}>
               <div className="flex items-center gap-3">
