@@ -5,7 +5,7 @@ import { useAuth } from '../../shared/AuthContext.jsx';
 import { GlassCard, TealButton, PurpleButton, Spinner, ErrorMsg, Badge } from '../../shared/ui.jsx';
 
 export default function AccountPage({ onNavigate }) {
-  const { logout, token } = useAuth();
+  const { logout, user } = useAuth();
   const [profile, setProfile] = useState(null);
   const [appVersion, setAppVersion] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -75,9 +75,9 @@ export default function AccountPage({ onNavigate }) {
         <div className="w-14 h-14 rounded-2xl bg-teal/10 border border-teal/30 flex items-center justify-center flex-shrink-0">
           <User size={28} className="text-teal" />
         </div>
-        <div className="flex-1">
-          <p className="text-white font-bold text-lg">DreamPhysic User</p>
-          <p className="text-muted text-sm">Your profile</p>
+        <div className="flex-1 min-w-0">
+          <p className="text-white font-bold text-lg truncate">{user?.name || 'DreamPhysic User'}</p>
+          <p className="text-muted text-sm truncate">{user?.email || 'Your profile'}</p>
         </div>
         <Badge color="teal">Pro</Badge>
       </GlassCard>
