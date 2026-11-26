@@ -1,7 +1,17 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { api } from './api.js';
 
-const AuthCtx = createContext(null);
+const DEFAULT_AUTH_VALUE = {
+  isLoggedIn: false,
+  user: null,
+  token: null,
+  login: () => {},
+  logout: () => {},
+  loading: false,
+  setUser: () => {},
+};
+
+const AuthCtx = createContext(DEFAULT_AUTH_VALUE);
 
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(() => localStorage.getItem('dp_token') || '');
@@ -24,12 +34,12 @@ export function AuthProvider({ children }) {
   }, [logout]);
 
   return (
-    <AuthCtx.Provider value={{ token, user, setUser, login, logout, isLoggedIn: !!token }}>
+    <AuthCtx.Provider value={{ token, user, setUser, login, logout, isLoggedIn: !!token, loading: false }}>
       {children}
     </AuthCtx.Provider>
   );
 }
 
 export function useAuth() {
-  return useContext(AuthCtx);
+  return useContext(AuthCtx) ?? DEFAULT_AUTH_VALUE;
 }
