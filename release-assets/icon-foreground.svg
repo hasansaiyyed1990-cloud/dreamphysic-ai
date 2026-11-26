@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">DreamPhysic AI adaptive icon foreground</title>
+  <desc id="desc">Dumbbell and pulse emblem centered inside the Android adaptive icon safe zone, on a transparent background.</desc>
+  <defs>
+    <linearGradient id="brand" x1="250" y1="250" x2="774" y2="774" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2dd4bf"/>
+      <stop offset="1" stop-color="#a855f7"/>
+    </linearGradient>
+  </defs>
+
+  <!--
+    Android adaptive icons crop to circle / squircle / rounded-square masks.
+    Everything below stays inside the inner 66% safe-zone circle
+    (center 512,512; safe radius ~338), so no plate or pulse tip is clipped.
+    Background is intentionally transparent: icon-background.svg supplies the fill.
+  -->
+  <g>
+    <!-- Dumbbell: outer plates -->
+    <rect x="262" y="450" width="44" height="124" rx="14" fill="url(#brand)"/>
+    <rect x="718" y="450" width="44" height="124" rx="14" fill="url(#brand)"/>
+    <!-- Dumbbell: inner plates -->
+    <rect x="322" y="422" width="54" height="180" rx="17" fill="url(#brand)"/>
+    <rect x="648" y="422" width="54" height="180" rx="17" fill="url(#brand)"/>
+    <!-- Dumbbell: bar -->
+    <rect x="368" y="480" width="288" height="64" rx="32" fill="url(#brand)"/>
+    <!-- Gold pulse through the bar -->
+    <polyline points="404,512 466,512 490,456 526,568 550,512 620,512"
+              fill="none" stroke="#fbbf24" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="620" cy="512" r="13" fill="#fbbf24"/>
+  </g>
+</svg>

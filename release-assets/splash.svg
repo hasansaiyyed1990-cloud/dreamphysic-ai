@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2732" height="2732" viewBox="0 0 2732 2732" role="img" aria-labelledby="title desc">
+  <title id="title">DreamPhysic AI splash screen</title>
+  <desc id="desc">Centered DreamPhysic AI dumbbell and pulse emblem on an obsidian background.</desc>
+  <defs>
+    <linearGradient id="brand" x1="816" y1="760" x2="1916" y2="1860" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2dd4bf"/>
+      <stop offset="1" stop-color="#a855f7"/>
+    </linearGradient>
+    <radialGradient id="glowTeal" cx="50%" cy="44%" r="46%">
+      <stop offset="0" stop-color="#2dd4bf" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#2dd4bf" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowPurple" cx="76%" cy="76%" r="42%">
+      <stop offset="0" stop-color="#a855f7" stop-opacity="0.14"/>
+      <stop offset="1" stop-color="#a855f7" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Obsidian background -->
+  <rect width="2732" height="2732" fill="#05070c"/>
+  <rect width="2732" height="2732" fill="url(#glowTeal)"/>
+  <rect width="2732" height="2732" fill="url(#glowPurple)"/>
+
+  <!-- Emblem: centered at 1366,1240 so the wordmark below stays clear of the edges -->
+  <circle cx="1366" cy="1240" r="560" fill="none" stroke="url(#brand)" stroke-width="26" opacity="0.45"/>
+  <!-- Dumbbell: outer plates -->
+  <rect x="836" y="1112" width="86" height="256" rx="26" fill="url(#brand)"/>
+  <rect x="1810" y="1112" width="86" height="256" rx="26" fill="url(#brand)"/>
+  <!-- Dumbbell: inner plates -->
+  <rect x="950" y="1052" width="104" height="376" rx="32" fill="url(#brand)"/>
+  <rect x="1678" y="1052" width="104" height="376" rx="32" fill="url(#brand)"/>
+  <!-- Dumbbell: bar -->
+  <rect x="1036" y="1178" width="660" height="124" rx="62" fill="url(#brand)"/>
+  <!-- Gold pulse through the bar -->
+  <polyline points="1120,1240 1258,1240 1308,1128 1388,1354 1440,1240 1612,1240"
+            fill="none" stroke="#fbbf24" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="1612" cy="1240" r="25" fill="#fbbf24"/>
+
+  <!-- Wordmark -->
+  <text x="1366" y="2050" text-anchor="middle"
+        font-family="Arial, Helvetica, sans-serif" font-size="190" font-weight="700" letter-spacing="2"
+        fill="#ffffff">DreamPhysic <tspan fill="#2dd4bf">AI</tspan></text>
+  <text x="1366" y="2170" text-anchor="middle"
+        font-family="Arial, Helvetica, sans-serif" font-size="62" font-weight="600" letter-spacing="14"
+        fill="#fbbf24">TRAIN · TRACK · TRANSFORM</text>
+</svg>
