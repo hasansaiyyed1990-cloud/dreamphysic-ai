@@ -12,9 +12,11 @@
     Android adaptive icons crop to circle / squircle / rounded-square masks.
     Everything below stays inside the inner 66% safe-zone circle
     (center 512,512; safe radius ~338), so no plate or pulse tip is clipped.
+    The emblem is scaled 1.25x around the center so it reads boldly on launchers:
+    its farthest point moves from ~258 to ~322 from the center, still inside 338.
     Background is intentionally transparent: icon-background.svg supplies the fill.
   -->
-  <g>
+  <g transform="translate(512 512) scale(1.25) translate(-512 -512)">
     <!-- Dumbbell: outer plates -->
     <rect x="262" y="450" width="44" height="124" rx="14" fill="url(#brand)"/>
     <rect x="718" y="450" width="44" height="124" rx="14" fill="url(#brand)"/>

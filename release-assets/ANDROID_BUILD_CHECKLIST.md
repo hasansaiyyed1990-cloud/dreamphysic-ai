@@ -31,6 +31,16 @@ Assets in this folder:
 
 Run every command below from the Capacitor project root (`frontend/`), unless a step says otherwise.
 
+> **Current repo blocker (checked 2026-11-26):** the repo does not yet contain `frontend/package.json`, a Capacitor config, `frontend/index.html`, or an `android/` project, so the build commands below will fail today. A separate frontend setup must first add a working web project (`package.json` with a `build` script, an HTML entry, and a Capacitor config whose `webDir` matches the build output, usually `dist`) plus the Capacitor packages (`@capacitor/core`, `@capacitor/android`, and `@capacitor/cli` as a dev dependency). This checklist covers the release build once that setup exists; it does not create the frontend setup.
+
+Verify the setup before step 1 — stop and fix the frontend setup if any check fails:
+
+```bash
+test -f package.json && echo "package.json OK"
+ls capacitor.config.ts capacitor.config.json capacitor.config.js 2>/dev/null
+test -f index.html && echo "index.html OK"
+```
+
 ---
 
 ## 1. Bump the version (every release)
@@ -50,16 +60,15 @@ Keep this `versionName` in sync with `APP_LATEST_VERSION` in step 6.
 
 ## 2. Generate launcher icons and splash screens
 
-`@capacitor/assets` reads PNG sources, so export the SVGs in this folder to PNG first (any SVG→PNG converter works; sizes must match):
+`@capacitor/assets` reads PNG sources, so export the SVGs in this folder to PNG first. The commands below use `rsvg-convert` (install it with `brew install librsvg` on macOS or `sudo apt install librsvg2-bin` on Ubuntu/Debian) and run from `frontend/`, so the SVGs are at `../release-assets/`:
 
 ```bash
 mkdir -p assets
-# Export at exactly these sizes:
-#   icon.svg            -> assets/icon-only.png        (1024x1024)
-#   icon-foreground.svg -> assets/icon-foreground.png  (1024x1024)
-#   icon-background.svg -> assets/icon-background.png  (1024x1024)
-#   splash.svg          -> assets/splash.png           (2732x2732)
-#   splash.svg          -> assets/splash-dark.png      (2732x2732, same file)
+rsvg-convert -w 1024 -h 1024 ../release-assets/icon.svg            -o assets/icon-only.png
+rsvg-convert -w 1024 -h 1024 ../release-assets/icon-foreground.svg -o assets/icon-foreground.png
+rsvg-convert -w 1024 -h 1024 ../release-assets/icon-background.svg -o assets/icon-background.png
+rsvg-convert -w 2732 -h 2732 ../release-assets/splash.svg          -o assets/splash.png
+cp assets/splash.png assets/splash-dark.png
 
 npm install -D @capacitor/assets
 npx capacitor-assets generate --android
@@ -80,16 +89,51 @@ keytool -genkeypair -v \
 
 - `*.jks` is already in `.gitignore` — never commit the keystore or its passwords.
 - Back up `dreamphysic-release.jks` plus both passwords in a password manager / offline drive.
-- Put signing credentials in a local, uncommitted `android/keystore.properties`:
+- `keystore.properties` is **not** covered by the current `.gitignore`, so ignore it explicitly before creating it, then verify git ignores it:
+
+```bash
+printf '\nfrontend/android/keystore.properties\n' >> ../.gitignore
+git -C .. check-ignore -v frontend/android/keystore.properties
+```
+
+- Put signing credentials in the local `android/keystore.properties`. The Gradle snippet below resolves `storeFile` from `rootProject` (the `android/` folder), so `../dreamphysic-release.jks` is the keystore the `keytool` command above created in `frontend/`:
 
 ```properties
-storeFile=../../dreamphysic-release.jks
+storeFile=../dreamphysic-release.jks
 storePassword=<your store password>
 keyAlias=dreamphysic
 keyPassword=<your key password>
 ```
 
-- Reference it from `android/app/build.gradle` (`signingConfigs.release`) and set `buildTypes.release.signingConfig = signingConfigs.release`. Keep `keystore.properties` out of git.
+- Merge this into the existing `android { ... }` block in `android/app/build.gradle` (do not add a second `android` block):
+
+```groovy
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
+android {
+    signingConfigs {
+        release {
+            // Only set when the local file exists, so debug builds still configure
+            // on a fresh clone; assembleRelease fails until step 3 is done.
+            if (keystorePropertiesFile.exists()) {
+                storeFile rootProject.file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+        }
+    }
+}
+```
 
 ---
 
@@ -98,13 +142,8 @@ keyPassword=<your key password>
 ```bash
 npm install
 npm run build
-npx cap sync android
-```
-
-If the `android/` project does not exist yet (first build only), create it once, then re-run the sync:
-
-```bash
-npx cap add android
+# First build only: create the Android project once (skip if android/ already exists)
+test -d android || npx cap add android
 npx cap sync android
 ```
 
@@ -127,11 +166,15 @@ android/app/build/outputs/apk/release/app-release.apk
 Verify the signature and version before shipping:
 
 ```bash
-# Signature check (apksigner ships with the Android SDK build-tools)
-apksigner verify --verbose android/app/build/outputs/apk/release/app-release.apk
+# apksigner / aapt ship with the Android SDK build-tools and are usually not on PATH,
+# so resolve the newest installed build-tools folder explicitly:
+BUILD_TOOLS="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)"
+
+# Signature check
+"$BUILD_TOOLS/apksigner" verify --verbose android/app/build/outputs/apk/release/app-release.apk
 
 # Version check: versionCode / versionName must match step 1
-aapt dump badging android/app/build/outputs/apk/release/app-release.apk | head -n 1
+"$BUILD_TOOLS/aapt" dump badging android/app/build/outputs/apk/release/app-release.apk | head -n 1
 
 # Smoke test on a connected phone
 adb install -r android/app/build/outputs/apk/release/app-release.apk
