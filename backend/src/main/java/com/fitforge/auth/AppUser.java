@@ -28,7 +28,19 @@ public class AppUser implements UserDetails {
     @Column(name = "secondary_goal", length = 40) private String secondaryGoal;
 
     protected AppUser() {}
-    public AppUser(String name, String email, String passwordHash) { this.name=name; this.email=email.toLowerCase(); this.passwordHash=passwordHash; }
+    public AppUser(String name, String email, String passwordHash) {
+        this.name = name == null ? null : name.trim();
+        this.email = email == null ? null : email.trim().toLowerCase();
+        this.passwordHash = passwordHash;
+    }
+
+    // Guarantee every nullable=false field is populated before the INSERT,
+    // so a missing value can never surface as a database 500.
+    @PrePersist void prePersist() {
+        if (createdAt == null) createdAt = LocalDateTime.now();
+        if (email != null) email = email.trim().toLowerCase();
+        if (name == null || name.isBlank()) name = email;
+    }
     public Long getId(){return id;} public String getName(){return name;} public int getTargetCalories(){return targetCalories;}
     public Double getHeightCm(){return heightCm;} public Integer getAgeYears(){return ageYears;} public String getGender(){return gender;}
     public String getActivityLevel(){return activityLevel;} public String getPrimaryGoal(){return primaryGoal;} public String getSecondaryGoal(){return secondaryGoal;}

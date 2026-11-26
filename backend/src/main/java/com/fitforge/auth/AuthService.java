@@ -7,7 +7,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -16,6 +18,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.security.SecureRandom;
 import java.time.Instant;
+import java.util.Locale;
 import java.time.temporal.ChronoUnit;
 
 @Service
@@ -48,16 +51,41 @@ public class AuthService {
     }
 
     public AuthDtos.AuthResult register(AuthDtos.Credentials c) {
-        String email = c.email().trim().toLowerCase();
-        if (users.existsByEmail(email)) throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already registered");
-        AppUser u = users.save(new AppUser(c.name() == null || c.name().isBlank() ? email : c.name().trim(), email, encoder.encode(c.password())));
+        String email = c.email().trim().toLowerCase(Locale.ROOT);
+        if (users.existsByEmail(email)) throw emailConflict();
+        AppUser u = new AppUser(resolveName(c, email), email, encoder.encode(c.password()));
+        try {
+            // saveAndFlush forces the unique-email check inside this try, so a
+            // concurrent duplicate registration becomes a clean 409, never a 500.
+            u = users.saveAndFlush(u);
+        } catch (DataIntegrityViolationException ex) {
+            throw emailConflict();
+        }
         return result(u);
     }
 
     public AuthDtos.AuthResult login(AuthDtos.Credentials c) {
-        String email = c.email().trim().toLowerCase();
-        auth.authenticate(new UsernamePasswordAuthenticationToken(email, c.password()));
-        return result(users.findByEmail(email).orElseThrow());
+        String email = c.email().trim().toLowerCase(Locale.ROOT);
+        try {
+            auth.authenticate(new UsernamePasswordAuthenticationToken(email, c.password()));
+        } catch (AuthenticationException ex) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid email or password");
+        }
+        return result(users.findByEmail(email)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid email or password")));
+    }
+
+    private static ResponseStatusException emailConflict() {
+        return new ResponseStatusException(HttpStatus.CONFLICT, "Email already registered. Please sign in.");
+    }
+
+    /** First non-blank of name/fullName/username, else the email prefix (capped at the 120-char column). */
+    private static String resolveName(AuthDtos.Credentials c, String email) {
+        for (String candidate : new String[]{c.name(), c.fullName(), c.username()}) {
+            if (candidate != null && !candidate.isBlank()) return candidate.trim();
+        }
+        String prefix = email.substring(0, email.indexOf('@'));
+        return prefix.length() > 120 ? prefix.substring(0, 120) : prefix;
     }
 
     @Transactional
@@ -83,7 +111,12 @@ public class AuthService {
             msg.setTo(email);
             msg.setSubject("DreamPhysic AI - Password Reset OTP");
             msg.setText("Your 6-digit password reset OTP is: " + otp + "\nThis code expires in 10 minutes.");
-            sender.send(msg);
+            try {
+                sender.send(msg);
+            } catch (RuntimeException mailFailure) {
+                // A broken/unconfigured SMTP server must never fail the request with a 500.
+                LOG.warn("Password reset OTP email could not be sent for {}: {}", email, mailFailure.getMessage());
+            }
         } else {
             LOG.info("DEV fallback OTP generated for {} (expires in 10m): {}", email, otp);
         }
@@ -116,6 +149,7 @@ public class AuthService {
     }
 
     private AuthDtos.AuthResult result(AppUser u) {
-        return new AuthDtos.AuthResult(jwt.issue(u), "Bearer", u.getId(), u.getUsername(), u.getName());
+        return new AuthDtos.AuthResult(jwt.issue(u), "Bearer", u.getId(), u.getUsername(), u.getName(),
+                new AuthDtos.UserSummary(u.getId(), u.getName(), u.getUsername()));
     }
 }

@@ -54,7 +54,7 @@ public class SecurityConfig {
                         .frameOptions(f -> f.deny())
                         .referrerPolicy(r -> r.policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.NO_REFERRER)))
                 .authorizeHttpRequests(a -> a.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers("/api/health", "/api/app-version", "/api/auth/register", "/api/auth/login",
+                        .requestMatchers("/api/health", "/api/app-version", "/api/auth/register", "/api/auth/signup", "/api/auth/login",
                                 "/api/auth/forgot-password", "/api/auth/reset-password", "/actuator/health").permitAll()
                         // Everything else under actuator (info, env, beans, heapdump, ...) stays closed.
                         .requestMatchers("/actuator/**").denyAll()
