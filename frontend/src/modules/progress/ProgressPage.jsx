@@ -55,7 +55,7 @@ export default function ProgressPage() {
       const [w, ph, p, a] = await Promise.allSettled([
         api('/progress/weight'),
         api('/progress/physique'),
-        api('/progress/prs'),
+        api('/progress/strength-prs'),
         api('/progress/alerts'),
       ]);
       if (w.status === 'fulfilled') setWeights(w.value || []);
