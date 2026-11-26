@@ -1,27 +1,67 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Activity, ArrowRight, AudioLines, Check, ChevronRight, CircleHelp, Clock3, Dumbbell, Flame, HeartPulse, LogOut, Mic, Moon, Play, Sparkles, TimerReset, Utensils, Weight, Wifi } from 'lucide-react';
-import { api } from './api';
-import Cardio from './Cardio';
-import AutopilotDashboard from './AutopilotDashboard';
-import AutopilotErrorBoundary from './AutopilotErrorBoundary';
+import React, { lazy, Suspense, useState, useEffect } from 'react';
+import { AuthProvider, useAuth } from './shared/AuthContext.jsx';
+import { BottomNav } from './shared/BottomNav.jsx';
+import { Spinner } from './shared/ui.jsx';
+import AuthPage from './modules/account/AuthPage.jsx';
 
-const tokenKey='dreamphysic-token';
-export default function App(){
- const [token,setToken]=useState(localStorage.getItem(tokenKey)||''); const [email,setEmail]=useState(''); const [password,setPassword]=useState(''); const [authMode,setAuthMode]=useState('login'); const [tab,setTab]=useState('home'); const [plan,setPlan]=useState(null); const [busy,setBusy]=useState(false); const [error,setError]=useState(''); const [coachText,setCoachText]=useState(''); const [answer,setAnswer]=useState(''); const [review,setReview]=useState(null); const [seconds,setSeconds]=useState(0); const [timerOn,setTimerOn]=useState(false); const [voice,setVoice]=useState(false);
- useEffect(()=>{ if(token) loadPlan(); },[token]);
- useEffect(()=>{if(!timerOn)return;const t=setInterval(()=>setSeconds(s=>Math.max(0,s-1)),1000);return()=>clearInterval(t)},[timerOn]);
- async function loadPlan(){try{setError('');setPlan(await api('/autopilot/today',{token}));}catch(e){setError(e.message)}}
- async function auth(e){e.preventDefault();setBusy(true);setError('');try{const data=await api(`/auth/${authMode}`,{method:'POST',body:{email,password,name:email.split('@')[0]}});localStorage.setItem(tokenKey,data.token);setToken(data.token);}catch(e){setError(e.message)}finally{setBusy(false)}}
- async function askCoach(prompt=coachText,extra={}){if(!prompt.trim())return '';setBusy(true);setError('');setAnswer('');try{const response=await api('/autopilot/coach',{method:'POST',token,body:{prompt,...extra}});setAnswer(response);return response;}catch(e){setError(e.message);return ''}finally{setBusy(false)}}
- async function runReview(){setBusy(true);setError('');try{setReview(await api('/autopilot/weekly-review',{method:'POST',token}));}catch(e){setError(e.message)}finally{setBusy(false)}}
- function voiceCommand(){const Speech=window.SpeechRecognition||window.webkitSpeechRecognition;if(!Speech){setError('Voice recognition is not available on this device/browser.');return}const rec=new Speech();rec.lang='en-IN';rec.onresult=e=>{const words=e.results[0][0].transcript;setCoachText(words);askCoach(words)};rec.onerror=()=>setError('Voice input failed. Try typing your question.');rec.start();setVoice(true);rec.onend=()=>setVoice(false)}
- if(!token)return <main className="auth-shell"><section className="auth-card"><div className="brand"><div className="brand-icon"><Dumbbell/></div><span>DREAM <b>PHYSIC</b><small>AI TRAINING SYSTEM</small></span></div><p className="eyebrow">YOUR TRAINING, WITH A PLAN</p><h1>Train with clarity.<br/><em>Get stronger daily.</em></h1><p className="muted">Your personal bodybuilding coach, made for real life.</p><form onSubmit={auth}><label>Email<input type="email" required value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com"/></label><label>Password<input type="password" required minLength="8" value={password} onChange={e=>setPassword(e.target.value)} placeholder="At least 8 characters"/></label><button className="primary full" disabled={busy}>{busy?'Please wait':authMode==='login'?'Sign in':'Create account'} <ArrowRight size={17}/></button></form><button className="text-button" onClick={()=>setAuthMode(authMode==='login'?'register':'login')}>{authMode==='login'?'New here? Create your account':'Already have an account? Sign in'}</button>{error&&<p className="error">{error}</p>}</section></main>;
- const n=plan?.nutrition; const w=plan?.workout;
- return <div className="app-shell"><header className="topbar"><div className="brand compact"><div className="brand-icon"><Dumbbell/></div><span>DREAM <b>PHYSIC</b><small>AI TRAINING SYSTEM</small></span></div><div className="top-actions"><span className="online"><Wifi size={14}/> SYNCED</span><button className="icon-btn" aria-label="Sign out" onClick={()=>{localStorage.removeItem(tokenKey);setToken('')}}><LogOut size={18}/></button></div></header>
- <main className="content"><div className="welcome-row"><div><p className="eyebrow">{new Date().toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long'})}</p><h1>{tab==='coach'?'AI Coach':tab==='cardio'?'Cardio & Stamina':'Your training dashboard'}<span>.</span></h1><p className="muted">{tab==='coach'?'Your plan, coach and recovery tools in one place.':tab==='cardio'?'Run, ride, swim or build stamina at your own pace.':'Small, consistent sessions build lasting strength.'}</p></div><div className="streak"><Flame size={18}/><b>Today</b><small>Keep your rhythm</small></div></div>
- {error&&<div className="alert"><CircleHelp size={17}/>{error}<button onClick={()=>setError('')}>×</button></div>}
- {tab==='home'?<><section className="hero-card"><div className="hero-copy"><span className="tag"><Sparkles size={14}/> DAILY AUTOPILOT</span><h2>Show up.<br/><em>Follow the plan.</em></h2><p>Your next training step is ready when you are.</p><button className="primary" onClick={()=>setTab('coach')}>Open AI Coach <ArrowRight size={17}/></button></div><div className="hero-art"><div className="ring"><Dumbbell size={48}/></div><span>STRONGER<br/>BY DESIGN</span></div></section><div className="metric-grid"><Metric icon={<Dumbbell/>} label="Today's split" value={w?.split||'Loading plan'}/><Metric icon={<Utensils/>} label="Calories left" value={n?`${n.caloriesRemaining} kcal`:'—'}/><Metric icon={<Weight/>} label="Protein left" value={n?`${Math.round(n.proteinRemainingG)} g`:'—'}/></div><section className="panel home-next"><div className="section-head"><div><p className="eyebrow">UP NEXT</p><h2>Today's focus</h2></div><button className="link-button" onClick={()=>setTab('coach')}>View plan <ChevronRight size={16}/></button></div><p>{w?.muscleGroups?.join(' · ')||'Your split and muscle focus will appear here.'}</p><p className="muted">AI Coach features live in the dedicated Coach tab.</p></section></>:tab==='cardio'?<Cardio token={token}/>:<AutopilotErrorBoundary><AutopilotDashboard token={token} onCoach={(q)=>askCoach(q)}/></AutopilotErrorBoundary>}
- </main><nav className="bottom-nav"><button className={tab==='home'?'active':''} onClick={()=>setTab('home')}><Activity/><span>Home</span></button><button className={tab==='cardio'?'active':''} onClick={()=>setTab('cardio')}><HeartPulse/><span>Cardio</span></button><button className={tab==='coach'?'active':''} onClick={()=>setTab('coach')}><Sparkles/><span>AI Coach</span></button></nav></div>
+// Lazy-load all modules for 60fps performance
+const HomeModule = lazy(() => import('./modules/home/HomePage.jsx'));
+const FitnessAIModule = lazy(() => import('./modules/fitness-ai/FitnessAIPage.jsx'));
+const ProgressModule = lazy(() => import('./modules/progress/ProgressPage.jsx'));
+const WorkoutModule = lazy(() => import('./modules/workout/WorkoutPage.jsx'));
+const CardioModule = lazy(() => import('./modules/cardio/CardioPage.jsx'));
+const AutopilotModule = lazy(() => import('./modules/autopilot/AutopilotPage.jsx'));
+const DietModule = lazy(() => import('./modules/diet/DietPage.jsx'));
+const AccountModule = lazy(() => import('./modules/account/AccountPage.jsx'));
+
+function ModuleSuspense({ children }) {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <Spinner size={32} />
+      </div>
+    }>
+      {children}
+    </Suspense>
+  );
 }
-function Metric({icon,label,value}){return <div className="metric"><div>{icon}</div><span>{label}</span><b>{value}</b></div>}
-function Physique({onAnalyze}){return <form className="physique-form" onSubmit={onAnalyze}><label>Focus<select name="focus"><option>Wider back</option><option>Belly fat reduction</option><option>Chest and shoulders</option><option>Arms</option><option>Legs</option><option>Overall definition</option></select></label><label>Your goal<input name="goal" placeholder="e.g. build visible shoulder definition" required/></label><div className="form-pair"><label>Measurement<input name="measurement" placeholder="Waist (cm), optional"/></label><label>Baseline<input name="baseline" type="number" step="0.1" placeholder="Current"/></label><label>Target<input name="target" type="number" step="0.1" placeholder="Target"/></label></div><button className="primary" type="submit">Analyze physique goal <ArrowRight size={16}/></button></form>}
+
+function AppShell() {
+  const { isLoggedIn, logout } = useAuth();
+  const [tab, setTab] = useState('home');
+
+  if (!isLoggedIn) return <AuthPage />;
+
+  const renderTab = () => {
+    switch (tab) {
+      case 'home': return <HomeModule onNavigate={setTab} />;
+      case 'ai': return <FitnessAIModule />;
+      case 'progress': return <ProgressModule />;
+      case 'workout': return <WorkoutModule />;
+      case 'cardio': return <CardioModule />;
+      case 'autopilot': return <AutopilotModule />;
+      case 'diet': return <DietModule />;
+      case 'account': return <AccountModule onNavigate={setTab} />;
+      default: return <HomeModule onNavigate={setTab} />;
+    }
+  };
+
+  return (
+    <div className="min-h-screen min-h-dvh" style={{ background: '#05070c' }}>
+      <div className="content-safe overflow-auto">
+        <ModuleSuspense>
+          {renderTab()}
+        </ModuleSuspense>
+      </div>
+      <BottomNav active={tab} onChange={setTab} />
+    </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppShell />
+    </AuthProvider>
+  );
+}

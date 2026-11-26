@@ -1,0 +1,86 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-top: env(safe-area-inset-top, 0px);
+  }
+
+  * {
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  html {
+    overscroll-behavior-y: none;
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-bg text-white;
+    min-height: 100vh;
+    min-height: 100dvh;
+    overscroll-behavior-y: none;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  input, textarea, select, button {
+    font-size: 16px; /* prevents iOS zoom */
+  }
+
+  /* Scrollbar hide */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+}
+
+@layer components {
+  .glass-card {
+    background: rgba(15, 23, 42, 0.88);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    @apply rounded-2xl;
+  }
+
+  .glass-card-teal {
+    background: rgba(15, 23, 42, 0.88);
+    border: 1px solid rgba(45, 212, 191, 0.2);
+    @apply rounded-2xl;
+  }
+
+  .glass-card-purple {
+    background: rgba(15, 23, 42, 0.88);
+    border: 1px solid rgba(168, 85, 247, 0.2);
+    @apply rounded-2xl;
+  }
+
+  .btn-teal {
+    @apply bg-teal text-bg font-bold rounded-xl px-4 py-3 text-sm transition-transform active:scale-95;
+    touch-action: manipulation;
+  }
+
+  .btn-purple {
+    @apply bg-purple text-white font-bold rounded-xl px-4 py-3 text-sm transition-transform active:scale-95;
+    touch-action: manipulation;
+  }
+
+  .btn-ghost {
+    @apply rounded-xl px-4 py-3 text-sm font-semibold transition-transform active:scale-95;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    touch-action: manipulation;
+  }
+
+  .tab-num {
+    @apply font-mono tabular-nums;
+  }
+
+  .bottom-nav-safe {
+    padding-bottom: calc(12px + var(--safe-bottom));
+  }
+
+  .content-safe {
+    padding-bottom: calc(80px + var(--safe-bottom));
+  }
+}
