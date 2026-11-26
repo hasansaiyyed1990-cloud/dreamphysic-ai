@@ -2,6 +2,7 @@ package com.fitforge.ai;
 
 import com.fitforge.auth.AppUserRepository;
 import com.fitforge.cardio.CardioRepository;
+import com.fitforge.cardio.CardioSession;
 import com.fitforge.cardio.CardioGoalRepository;
 import com.fitforge.progress.WeightRepository;
 import com.fitforge.nutrition.*;
@@ -9,13 +10,20 @@ import com.fitforge.workout.WorkoutSet;
 import com.fitforge.workout.WorkoutSetRepository;
 import com.fitforge.workout.ExerciseGoalRepository;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
 
 @Service
 public class AiLiveContextService {
-    public record LiveContext(String promptBlock, double protocolWeightKg, boolean weightLogged, int calorieTarget) {}
+    public record LiveContext(String promptBlock, double protocolWeightKg, boolean weightLogged, int calorieTarget,
+                              double weeklyRunKm, double longestRunKm, double recentRunPaceMinPerKm,
+                              String primaryGoal, Double targetWeightKg, String targetDate) {
+        public LiveContext(String promptBlock, double protocolWeightKg, boolean weightLogged, int calorieTarget) {
+            this(promptBlock, protocolWeightKg, weightLogged, calorieTarget, 0, 0, 0, "not set", null, null);
+        }
+    }
 
     private final AppUserRepository users;
     private final WeightRepository weights;
@@ -28,6 +36,8 @@ public class AiLiveContextService {
     private final DailyCalorieBalanceRepository balances;
     private final HydrationFiberRepository hydration;
     private final MealRepository legacyMeals;
+    @Autowired(required = false) private UserCoachContextBuilder coachContextBuilder;
+    @Autowired(required = false) private CoachFormulaEngine formulaEngine;
 
     public AiLiveContextService(AppUserRepository users, WeightRepository weights, WorkoutSetRepository sets, CardioRepository cardio,CardioGoalRepository cardioGoals,ExerciseGoalRepository exerciseGoals,FoodDiaryRepository foodDiary,FatLossMissionRepository missions,DailyCalorieBalanceRepository balances,HydrationFiberRepository hydration,MealRepository legacyMeals) {
         this.users = users; this.weights = weights; this.sets = sets; this.cardio = cardio;this.cardioGoals=cardioGoals;this.exerciseGoals=exerciseGoals;this.foodDiary=foodDiary;this.missions=missions;this.balances=balances;this.hydration=hydration;this.legacyMeals=legacyMeals;
@@ -41,7 +51,7 @@ public class AiLiveContextService {
         for (WorkoutSet set : sets.findByUserEmailOrderByExerciseNameAscWeightKgDescWorkoutDateDesc(email)) {
             best.putIfAbsent(set.getExerciseName().toLowerCase(Locale.ROOT), set);
         }
-        var cardioLogs = cardio.findByUserEmailOrderBySessionDateDesc(email, PageRequest.of(0, 5));
+        var cardioLogs = cardio.findByUserEmailOrderBySessionDateDesc(email, PageRequest.of(0, 20));
         var userId=users.findByEmail(email).map(u->u.getId()).orElse(null);
         var today=java.time.LocalDate.now();
         var diet=foodDiary.findByUserIdAndEntryDateBetweenOrderByEntryDateAscLoggedAtAsc(userId,today.minusDays(6),today);
@@ -71,7 +81,26 @@ public class AiLiveContextService {
         double recent7=weightTrend.stream().filter(w->!w.getDate().isBefore(today.minusDays(6))).mapToDouble(w->w.getWeightKg()).average().orElse(0),prior7=weightTrend.stream().filter(w->!w.getDate().isAfter(today.minusDays(7))&&!w.getDate().isBefore(today.minusDays(13))).mapToDouble(w->w.getWeightKg()).average().orElse(0);b.append("7-day weight average: ").append(recent7==0?"not enough logged weigh-ins":String.format(Locale.ROOT,"%.2f kg",recent7)).append("; prior-week average: ").append(prior7==0?"not enough logged weigh-ins":String.format(Locale.ROOT,"%.2f kg",prior7)).append(".\n");
         if(userId!=null){mission.ifPresent(m->{b.append("Fitness mission: current ").append(weight.map(w->w.getWeightKg()+"kg").orElse("weight not logged")).append("; target ").append(m.getTargetWeightKg()).append("kg; original deadline ").append(m.getOriginalDeadline()).append("; revised deadline ").append(m.getRevisedDeadline()).append(".\n");});balances.findTopByUserIdOrderByEntryDateDesc(userId).ifPresent(x->b.append("pendingGapKcal: ").append(x.getPendingGapKcal()).append(" kcal; this is tracking only, never exercise debt.\n"));b.append("Custom exercise goals and plateau flags: ").append(exerciseGoals.findByUserEmailOrderByExerciseNameAsc(email).stream().map(g->g.getExerciseName()+" target "+g.getTargetWeightKg()+"kg x "+g.getTargetReps()+" by "+g.getDeadlineDate()+"; "+plateauFlag(email,g.getExerciseName())).toList()).append(".\n");b.append("Cardio goals: ").append(cardioGoals.findByUserEmailOrderByGoalNameAsc(email).stream().map(g->g.getGoalName()+" "+g.getTargetDistanceKm()+"km pace "+g.getTargetPaceMinPerKm()+" deadline "+g.getRevisedDeadline()).toList()).append(".\n");}
         b.append("Recovery flags: ").append(consumedToday<calorieBudget*.65?"low logged intake; prioritize food/rest":"no low-intake flag from today's available logs").append(hydrationToday.isPresent()&&hydrationToday.get().getWaterMl()<hydrationToday.get().getWaterGoalMl()*.5?"; water under half goal":"").append(". Sleep/readiness not logged, so do not infer recovery.\n[/ATHLETE LIVE PROFILE]");
-        return new LiveContext(b.toString(), weight.map(w -> w.getWeightKg()).orElse(70.0), weight.isPresent(), calories);
+        double weeklyRunKm = cardioLogs.stream().filter(c -> isRun(c.getActivity()) && c.getSessionDate() != null && !c.getSessionDate().toLocalDate().isBefore(today.minusDays(6)))
+                .mapToDouble(CardioSession::getDistanceKm).sum();
+        double longestRunKm = cardioLogs.stream().filter(c -> isRun(c.getActivity())).mapToDouble(CardioSession::getDistanceKm).max().orElse(0);
+        double recentRunPace = cardioLogs.stream().filter(c -> isRun(c.getActivity()) && c.getDistanceKm() >= 1 && c.getPaceMinPerKm() > 0)
+                .mapToDouble(CardioSession::getPaceMinPerKm).min().orElse(0);
+        String primaryGoal = users.findByEmail(email).map(u -> u.getPrimaryGoal() == null ? "not set" : u.getPrimaryGoal()).orElse("not set");
+        Double targetWeight = mission.map(FatLossMission::getTargetWeightKg).orElse(null);
+        String targetDate = mission.map(m -> m.getRevisedDeadline().toString()).orElse(null);
+        if (coachContextBuilder != null) {
+            UserCoachContextBuilder.CoachContext coach = coachContextBuilder.build(email);
+            b.append("\n").append(coach.promptBlock()).append("\n");
+            if (formulaEngine != null) b.append(formulaEngine.build(coach)).append("\n");
+        }
+        return new LiveContext(b.toString(), weight.map(w -> w.getWeightKg()).orElse(70.0), weight.isPresent(), calories,
+                weeklyRunKm, longestRunKm, recentRunPace, primaryGoal, targetWeight, targetDate);
+    }
+    private boolean isRun(String activity) {
+        if (activity == null) return false;
+        String value = activity.toUpperCase(Locale.ROOT);
+        return value.contains("RUN") || value.contains("JOG") || value.contains("TREADMILL");
     }
     private String plateauFlag(String email,String exercise){var rows=sets.sessionsForExercise(email,exercise);var sessions=new LinkedHashMap<java.time.LocalDateTime,List<WorkoutSet>>();for(var s:rows)sessions.computeIfAbsent(s.getWorkoutDate(),k->new java.util.ArrayList<>()).add(s);var it=sessions.values().iterator();if(!it.hasNext())return "no sessions logged";var current=metric(it.next());if(!it.hasNext())return "plateau not assessable yet";var previous=metric(it.next());return current.weight<=previous.weight&&current.reps<=previous.reps&&current.volume<=previous.volume?"possible stagnation in latest comparison":"progress observed in latest comparison";}
     private LiftMetric metric(List<WorkoutSet> s){return new LiftMetric(s.stream().mapToDouble(WorkoutSet::getWeightKg).max().orElse(0),s.stream().mapToInt(WorkoutSet::getReps).max().orElse(0),s.stream().mapToDouble(x->x.getWeightKg()*x.getReps()).sum());}
