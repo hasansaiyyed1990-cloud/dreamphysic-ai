@@ -15,5 +15,6 @@ public class WorkoutSession {
     protected WorkoutSession(){}
     public WorkoutSession(String email,WorkoutDtos.SessionInput i){userEmail=email;name=i.name();sessionDate=i.sessionDate()==null?LocalDateTime.now():i.sessionDate();}
     public void addSet(WorkoutSet s){sets.add(s);s.setSession(this);}
+    public void update(WorkoutDtos.SessionUpdate i){name=i.name().trim();if(i.sessionDate()!=null)sessionDate=i.sessionDate();}
     public Long getId(){return id;}public String getUserEmail(){return userEmail;}public String getName(){return name;}public LocalDateTime getSessionDate(){return sessionDate;}public List<WorkoutSet> getSets(){return sets;}
 }

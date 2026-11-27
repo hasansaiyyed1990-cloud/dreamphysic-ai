@@ -22,6 +22,15 @@ public class WorkoutSet {
     @Column(name="workout_date",nullable=false) private LocalDateTime workoutDate;
     @Column(name="tracking_type",length=24) private String trackingType;
     @Column(name="weight_mode",length=24) private String weightMode;
+    @Column(name="muscle_group",length=80) private String muscleGroup;
+    @Column(name="sub_muscle",length=100) private String subMuscle;
+    @Column(length=120) private String equipment;
+    @Column(name="set_type",length=24) private String setType;
+    @Column(name="duration_seconds") private Integer durationSeconds;
+    @Column(precision=4,scale=2) private BigDecimal rpe;
+    private Integer rir;
+    @Column(columnDefinition="text") private String notes;
+    @Column(name="completed") private Boolean completed=Boolean.TRUE;
 
     protected WorkoutSet(){}
 
@@ -37,6 +46,11 @@ public class WorkoutSet {
         workoutDate=date;
         trackingType=weightKg.signum()>0?"WEIGHT_REPS":(reps>0?"BODYWEIGHT_REPS":"OTHER");
         weightMode="TOTAL";
+        muscleGroup=i.muscleGroup();subMuscle=i.subMuscle();equipment=i.equipment();
+        setType=i.setType()==null||i.setType().isBlank()?"WORKING":i.setType();
+        if(i.trackingType()!=null&&!i.trackingType().isBlank())trackingType=i.trackingType();
+        if(i.weightMode()!=null&&!i.weightMode().isBlank())weightMode=i.weightMode();
+        durationSeconds=i.durationSeconds();rpe=i.rpe()==null?null:decimal(i.rpe());rir=i.rir();notes=i.notes();completed=i.completed()==null||i.completed();
     }
 
     private static BigDecimal decimal(double value){
@@ -44,6 +58,7 @@ public class WorkoutSet {
     }
 
     public void setSession(WorkoutSession s){session=s;}
+    public void update(WorkoutDtos.SetInput i){exerciseName=i.exerciseName();setNumber=i.setNumber();reps=i.reps();weightKg=decimal(i.weightKg());previousWeightKg=i.previousWeightKg()==null?null:decimal(i.previousWeightKg());deltaKg=previousWeightKg==null?ZERO:weightKg.subtract(previousWeightKg);restSeconds=i.restSeconds();muscleGroup=i.muscleGroup();subMuscle=i.subMuscle();equipment=i.equipment();setType=i.setType()==null||i.setType().isBlank()?setType:i.setType();if(i.trackingType()!=null)trackingType=i.trackingType();if(i.weightMode()!=null)weightMode=i.weightMode();durationSeconds=i.durationSeconds();rpe=i.rpe()==null?null:decimal(i.rpe());rir=i.rir();notes=i.notes();completed=i.completed()==null?completed:i.completed();}
     public Long getId(){return id;}
     public String getExerciseName(){return exerciseName;}
     public int getSetNumber(){return setNumber;}
@@ -55,4 +70,5 @@ public class WorkoutSet {
     public LocalDateTime getWorkoutDate(){return workoutDate;}
     public String getTrackingType(){return trackingType==null?"WEIGHT_REPS":trackingType;}
     public String getWeightMode(){return weightMode==null?"TOTAL":weightMode;}
+    public String getMuscleGroup(){return muscleGroup;}public String getSubMuscle(){return subMuscle;}public String getEquipment(){return equipment;}public String getSetType(){return setType==null?"WORKING":setType;}public Integer getDurationSeconds(){return durationSeconds;}public Double getRpe(){return rpe==null?null:rpe.doubleValue();}public Integer getRir(){return rir;}public String getNotes(){return notes;}public boolean isCompleted(){return !Boolean.FALSE.equals(completed);}
 }
