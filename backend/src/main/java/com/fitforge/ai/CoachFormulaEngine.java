@@ -12,11 +12,10 @@ public class CoachFormulaEngine {
         AppUser user = context.user();
         Double weight = context.weightLogged() ? context.weightKg() : null;
         Double bmr = bmr(user, weight);
-        // Mixed-type ternary used to unbox a null bmr for brand-new users; keep the branches explicit.
         Double tdee;
-        if (context.maintenanceCalories() > 0) tdee = Double.valueOf(context.maintenanceCalories());
+        if (context.maintenanceCalories() > 0) tdee = context.maintenanceCalories();
         else if (bmr == null) tdee = null;
-        else tdee = Double.valueOf(bmr * activityFactor(user.getActivityLevel()));
+        else tdee = bmr * activityFactor(user.getActivityLevel());
         StringBuilder out = new StringBuilder("[REQUIRED COACH MATH]\n");
         if (tdee != null) {
             double floor = bmr == null ? 1200 : Math.max(1200, bmr);
