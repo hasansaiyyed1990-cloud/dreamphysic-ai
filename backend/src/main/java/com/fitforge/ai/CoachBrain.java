@@ -315,6 +315,7 @@ final class CoachBrain {
     private static final Pattern DAYS = Pattern.compile("(\\d{1,3})\\s*(?:days?|din)\\b");
     private static final Pattern PROTEIN_GRAMS = Pattern.compile("(?:(\\d{2,3})\\s*(?:g|gram|grams)\\s*protein|protein\\s*(\\d{2,3}))");
     private static final Pattern LOGGED_PROTEIN = Pattern.compile("diet avg \\d+ kcal / ([\\d.]+) g protein across (\\d+) logged days");
+    private static final Pattern LOGGED_DIET_1M = Pattern.compile("1M / 30 days:.*?diet avg ([\\d.]+) kcal / ([\\d.]+) g protein across (\\d+) logged days");
     private static final Pattern LOGGED_SESSIONS_1M = Pattern.compile("1M / 30 days:.*?workout sessions (\\d+)");
     private static final Pattern LOGGED_CARDIO_1M = Pattern.compile("1M / 30 days:.*?cardio ([\\d.]+) km / (\\d+) sessions");
     private static final Pattern LOGGED_WEIGHT_1M = Pattern.compile("1M / 30 days: weight ([\\d.]+) -> ([\\d.]+) kg \\(([+-][\\d.]+) kg\\)");
@@ -344,15 +345,19 @@ final class CoachBrain {
                 flags.add("UNSAFE FAT-LOSS TIMELINE: user wants " + one(lost) + " kg in " + one(weeks) + " weeks = "
                         + one(rate) + " kg/week. That needs about " + Math.round(deficit) + " kcal/day deficit, which is crash territory: muscle loss, rebound, zero training quality. Safe rate is 0.5-1.0% body weight/week, so this goal honestly takes "
                         + (int) safeWeeksLo + "-" + (int) safeWeeksHi + " weeks. Say this in sentence 1, do not promise the user's date.");
+                questions.add("Result chahiye ya 2-week deadline hi fixed hai? Safe timeline " + (int) safeWeeksLo + "-" + (int) safeWeeksHi + " weeks hai.");
             }
         }
 
         // --- spot-reduction myth.
         boolean spotMyth = p.contains("spot reduction") || p.contains("sirf pet") || p.contains("pet ka fat")
-                || p.contains("belly fat kam") || p.contains("pet kam") || p.contains("face fat")
+                || p.contains("pet ki charbi") || p.contains("sirf belly") || p.contains("belly se fat")
+                || p.contains("belly fat kam") || (p.contains("belly fat") && (p.contains("only") || p.contains("reduce") || p.contains("lose") || p.contains("crunch") || p.contains("exercise")))
+                || p.contains("pet kam") || p.contains("face fat")
                 || p.contains("thigh fat") || p.contains("arm fat") || (p.contains("abs") && (p.contains("crunch") || p.contains("exercise se")));
         if (spotMyth) {
             flags.add("SPOT-REDUCTION MYTH: fat cannot be removed from one body part by exercising it. Crunches build abs, they do not burn belly fat locally. Fat leaves from the whole body through a calorie deficit; the stubborn area is usually last. Sentence 1 must kill this myth directly.");
+            questions.add("Sirf us area ko target kyun karna hai—kya full-body fat-loss progress aur waist measurement bhi track karoge?");
         }
 
         // --- low-protein muscle gain.
@@ -366,11 +371,13 @@ final class CoachBrain {
                     + one(claimedProtein / bodyWeight) + " g/kg. Muscle gain below 1.4 g/kg stalls; at " + one(bodyWeight)
                     + " kg the floor is " + Math.round(proteinFloor) + " g and the working target is "
                     + Math.round(bodyWeight * 1.6) + "-" + Math.round(bodyWeight * 2.0) + " g/day. No protein, no muscle - say it plainly.");
+            questions.add("Tera intake " + Math.round(claimedProtein) + " g hai; kya tu isse roz " + Math.round(proteinFloor) + " g tak la sakta hai, ya budget/food preference constraint hai?");
         }
         if (muscleAsk && loggedProtein > 0 && loggedProtein < proteinFloor) {
             contradictions.add("User wants muscle gain but logged protein averages only " + one(loggedProtein)
                     + " g/day (" + one(loggedProtein / bodyWeight) + " g/kg) over the last 30 days, below the 1.4 g/kg floor ("
                     + Math.round(proteinFloor) + " g). Training is not the bottleneck; food is.");
+            questions.add("Tera muscle goal clear hai, par log " + one(loggedProtein) + " g/day dikhata hai; kaunse protein meals diary me miss ho rahe hain, agar intake zyada hai?");
         }
 
         // --- ego lifting / skipping recovery.
@@ -379,30 +386,47 @@ final class CoachBrain {
                 || p.contains("7 din gym") || p.contains("seven days gym");
         if (recoveryAbuse) {
             flags.add("RECOVERY ABUSE: training the same muscle heavy daily without rest does not build muscle faster; it buries recovery and stalls strength within weeks. Same muscle needs about 48 hours before hard work again. Sentence 1 must reject the no-rest plan.");
+            questions.add("Rest day kyun skip kar raha hai—schedule constraint hai ya lagta hai bina daily heavy training progress nahi hoga?");
         }
 
         // --- claim vs log contradictions.
         int sessions1m = loggedSessions1m(profile);
-        boolean claimsRegular = p.contains("roz workout") || p.contains("daily gym") || p.contains("regular hu")
-                || p.contains("regular hoon") || p.contains("6 din") || p.contains("har din workout");
-        if (claimsRegular && sessions1m >= 0 && sessions1m < 8) {
-            contradictions.add("User claims regular training but only " + sessions1m + " workout sessions are logged in the last 30 days (under 2/week). Confront this gap with the exact count instead of praising consistency that is not in the logs.");
+        boolean claimsRegular = p.contains("roz workout") || p.contains("roz gym") || p.contains("daily gym")
+                || p.contains("regular hu") || p.contains("regular hoon") || p.contains("consistent")
+                || p.contains("consistently") || p.contains("har din workout") || p.contains("every day workout")
+                || p.contains("6 din") || p.contains("5 din") || p.contains("4 din") || p.contains("3 din");
+        if (claimsRegular && sessions1m >= 0 && sessions1m < 12) {
+            double actualPerWeek = sessions1m / (30.0 / 7.0);
+            contradictions.add("User claims consistent training but only " + sessions1m + " workout sessions are logged in the last 30 days (" + one(actualPerWeek) + "/week, below 3/week). Confront this gap with the exact count; missing diary entries may explain it.");
+            questions.add("Tu consistent bol raha hai, par 30 din me " + sessions1m + " sessions log hain (~" + one(actualPerWeek) + "/week); kaunse sessions log nahi hue?");
         }
         double[] cardio1m = loggedCardio1m(profile);
         boolean claimsRunning = p.contains("roz daud") || p.contains("daily run") || p.contains("running regular")
                 || p.contains("stamina acha hai") || p.contains("stamina achha hai");
-        if (claimsRunning && cardio1m != null && cardio1m[1] == 0) {
-            contradictions.add("User claims regular running/stamina but zero cardio sessions are logged in the last 30 days. The stamina base is unproven until a run is logged.");
+        if (claimsRunning && cardio1m != null && cardio1m[1] < 12) {
+            contradictions.add("User claims regular running/stamina but only " + (int) cardio1m[1] + " cardio sessions are logged in the last 30 days (" + one(cardio1m[1] / (30.0 / 7.0)) + "/week). The stamina base is not established by these logs.");
+            questions.add("Tu regular run bol raha hai, par 30 din me " + (int) cardio1m[1] + " sessions log hain; kaunse runs diary me chhoote?");
         }
         double weightChange1m = loggedWeightChange1m(profile);
         boolean claimsLosing = p.contains("weight kam ho raha") || p.contains("fat kam ho raha") || p.contains("progress ho raha");
         if (claimsLosing && !Double.isNaN(weightChange1m) && weightChange1m >= 0) {
             contradictions.add("User claims weight is dropping but logged weight changed " + String.format(Locale.ROOT, "%+.1f", weightChange1m)
                     + " kg over the last 30 days. The scale trend disagrees; judge by the 7-day average, not feelings.");
+            questions.add("Tu weight loss bol raha hai, par 30-day log " + String.format(Locale.ROOT, "%+.1f", weightChange1m) + " kg dikhata hai; claim kis date range ya measurement par based hai?");
         }
         if (claimedProtein > 0 && loggedProtein > 0 && claimedProtein - loggedProtein >= 30) {
             contradictions.add("User claims about " + Math.round(claimedProtein) + " g protein/day but logged average is "
                     + one(loggedProtein) + " g/day. The gap is " + Math.round(claimedProtein - loggedProtein) + " g/day - name it.");
+            questions.add("Claim " + Math.round(claimedProtein) + " g hai, log " + one(loggedProtein) + " g/day; kya meals log nahi hue ya protein estimate galat tha?");
+        }
+
+        double[] loggedDiet = loggedDiet1m(profile);
+        boolean claimsCleanDiet = p.contains("clean diet") || p.contains("healthy diet") || p.contains("sahi diet")
+                || p.contains("diet follow") || p.contains("deficit me") || p.contains("calorie deficit");
+        if (claimsCleanDiet && loggedDiet != null && loggedDiet[0] > live.calorieTarget() * 1.10) {
+            contradictions.add("User says diet/deficit is on track, but 1M logged average is " + Math.round(loggedDiet[0])
+                    + " kcal/day versus " + live.calorieTarget() + " kcal budget. The diary does not show the claimed deficit; missing oil/snack entries may explain the gap.");
+            questions.add("Diary " + Math.round(loggedDiet[0]) + " kcal/day dikhati hai vs " + live.calorieTarget() + " kcal budget; kya oil, chai ya snacks log nahi hue?");
         }
 
         // --- cross-questions when constraints are missing.
@@ -463,6 +487,11 @@ final class CoachBrain {
     private static double loggedProteinAvg(String profile) {
         Matcher m = LOGGED_PROTEIN.matcher(profile);
         return m.find() ? number(m.group(1)) : 0;
+    }
+
+    private static double[] loggedDiet1m(String profile) {
+        Matcher m = LOGGED_DIET_1M.matcher(profile);
+        return m.find() ? new double[]{number(m.group(1)), number(m.group(2)), number(m.group(3))} : null;
     }
 
     private static int loggedSessions1m(String profile) {
