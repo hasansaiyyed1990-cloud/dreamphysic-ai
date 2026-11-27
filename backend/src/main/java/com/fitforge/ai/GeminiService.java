@@ -33,8 +33,8 @@ public class GeminiService {
     public GeminiService(RestClient.Builder builder, ObjectMapper mapper, FitnessKnowledgeService knowledge,
                          @Value("${app.gemini.api-key}") String key,
                          @Value("${app.gemini.base-url:https://generativelanguage.googleapis.com/v1beta}") String baseUrl,
-                         @Value("${app.gemini.model:gemini-2.5-flash}") String model,
-                         @Value("${app.gemini.fallback-model:gemini-2.5-flash-lite}") String fallbackModel,
+                         @Value("${app.gemini.model:gemini-3.5-flash}") String model,
+                         @Value("${app.gemini.fallback-model:gemini-flash-lite-latest}") String fallbackModel,
                          @Value("${app.gemini.timeout-ms:30000}") long timeoutMs) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(Duration.ofSeconds(5));
@@ -235,7 +235,10 @@ public class GeminiService {
 
     private boolean isRetryableForFallback(Exception ex) {
         if (ex instanceof ResourceAccessException || ex instanceof HttpServerErrorException) return true;
-        if (ex instanceof HttpClientErrorException clientEx) return clientEx.getStatusCode().value() == 429;
+        if (ex instanceof HttpClientErrorException clientEx) {
+            int code = clientEx.getStatusCode().value();
+            return code == 429 || code == 404;
+        }
         return false;
     }
 }

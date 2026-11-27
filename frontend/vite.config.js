@@ -18,9 +18,9 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: process.env.VITE_API_BASE_URL || 'https://dreamphysic-ai-production.up.railway.app',
+        target: process.env.VITE_API_BASE_URL || 'http://127.0.0.1:8080',
         changeOrigin: true,
-        secure: true,
+        secure: false,
       },
     },
   },
