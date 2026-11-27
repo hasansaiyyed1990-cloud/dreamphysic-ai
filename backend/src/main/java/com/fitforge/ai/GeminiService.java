@@ -156,6 +156,9 @@ public class GeminiService {
     }
 
     private String generate(String prompt, Map<String, Object> image, boolean jsonMode) {
+        if (key == null || key.isBlank() || key.startsWith("your-gemini")) {
+            throw new IllegalStateException("GEMINI_API_KEY is not configured on the server");
+        }
         var parts = new ArrayList<Map<String, Object>>();
         parts.add(Map.of("text", prompt));
         if (image != null) parts.add(image);
@@ -177,18 +180,32 @@ public class GeminiService {
         } catch (IllegalStateException known) {
             throw known;
         } catch (Exception primaryEx) {
+            LOG.warn("Primary Gemini model {} failed: {}", model, summarizeGeminiError(primaryEx));
             if (isRetryableForFallback(primaryEx) && fallbackModel != null && !fallbackModel.isBlank() && !fallbackModel.equals(model)) {
-                LOG.warn("Primary Gemini model {} failed ({}); retrying with fallback {}", model, primaryEx.getMessage(), fallbackModel);
                 try {
                     return invokeModel(fallbackModel, body);
                 } catch (IllegalStateException known) {
                     throw known;
                 } catch (Exception fallbackEx) {
-                    LOG.error("Fallback Gemini model {} also failed: {}", fallbackModel, fallbackEx.getMessage());
+                    LOG.error("Fallback Gemini model {} also failed: {}", fallbackModel, summarizeGeminiError(fallbackEx));
+                    throw new IllegalStateException("Gemini service is unavailable (" + summarizeGeminiError(fallbackEx) + ")");
                 }
             }
-            throw new IllegalStateException("Gemini service is unavailable; retry shortly");
+            throw new IllegalStateException("Gemini service is unavailable (" + summarizeGeminiError(primaryEx) + ")");
         }
+    }
+
+    private static String summarizeGeminiError(Exception ex) {
+        if (ex instanceof HttpClientErrorException httpEx) {
+            return "HTTP " + httpEx.getStatusCode().value() + " - check GEMINI_API_KEY/quota";
+        }
+        if (ex instanceof HttpServerErrorException httpEx) {
+            return "HTTP " + httpEx.getStatusCode().value() + " upstream error";
+        }
+        if (ex instanceof ResourceAccessException) {
+            return "timeout/network error";
+        }
+        return ex.getClass().getSimpleName();
     }
 
     private String invokeModel(String targetModel, Map<String, Object> body) {
