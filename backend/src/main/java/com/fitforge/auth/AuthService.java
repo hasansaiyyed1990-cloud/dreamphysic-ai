@@ -51,6 +51,9 @@ public class AuthService {
     }
 
     public AuthDtos.AuthResult register(AuthDtos.Credentials c) {
+        if (c == null || c.email() == null || c.email().isBlank() || c.password() == null || c.password().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Email and password are required");
+        }
         String email = c.email().trim().toLowerCase(Locale.ROOT);
         if (users.existsByEmail(email)) throw emailConflict();
         AppUser u = new AppUser(resolveName(c, email), email, encoder.encode(c.password()));
@@ -65,6 +68,9 @@ public class AuthService {
     }
 
     public AuthDtos.AuthResult login(AuthDtos.Credentials c) {
+        if (c == null || c.email() == null || c.email().isBlank() || c.password() == null || c.password().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Email and password are required");
+        }
         String email = c.email().trim().toLowerCase(Locale.ROOT);
         try {
             auth.authenticate(new UsernamePasswordAuthenticationToken(email, c.password()));
@@ -82,9 +88,13 @@ public class AuthService {
     /** First non-blank of name/fullName/username, else the email prefix (capped at the 120-char column). */
     private static String resolveName(AuthDtos.Credentials c, String email) {
         for (String candidate : new String[]{c.name(), c.fullName(), c.username()}) {
-            if (candidate != null && !candidate.isBlank()) return candidate.trim();
+            if (candidate != null && !candidate.isBlank()) {
+                String trimmed = candidate.trim();
+                return trimmed.length() > 120 ? trimmed.substring(0, 120) : trimmed;
+            }
         }
-        String prefix = email.substring(0, email.indexOf('@'));
+        int at = email.indexOf('@');
+        String prefix = at > 0 ? email.substring(0, at) : email;
         return prefix.length() > 120 ? prefix.substring(0, 120) : prefix;
     }
 

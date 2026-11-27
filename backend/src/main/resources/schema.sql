@@ -16,3 +16,7 @@ ALTER TABLE IF EXISTS cardio_sessions ALTER COLUMN notes TYPE text;
 ALTER TABLE IF EXISTS autopilot_physique_goals ALTER COLUMN goal TYPE text;
 ALTER TABLE IF EXISTS autopilot_physique_goals ALTER COLUMN linked_exercises TYPE text;
 ALTER TABLE IF EXISTS autopilot_physique_goals ALTER COLUMN next_steps TYPE text;
+-- Ensure legacy user rows have non-null token_version and target_calories.
+ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS token_version integer DEFAULT 0;
+UPDATE users SET token_version = 0 WHERE token_version IS NULL;
+UPDATE users SET target_calories = 1800 WHERE target_calories IS NULL;

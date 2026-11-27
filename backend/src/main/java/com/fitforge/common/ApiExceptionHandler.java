@@ -103,8 +103,20 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     ResponseEntity<ApiResponse<Void>> unexpected(Exception ex) {
-        LOG.error("Unhandled exception", ex);
-        return ResponseEntity.internalServerError().body(ApiResponse.error("Internal server error"));
+        LOG.error("Unhandled API error", ex);
+        String rootCause = conciseRootCause(ex);
+        return ResponseEntity.internalServerError().body(ApiResponse.error("Internal server error: " + rootCause));
+    }
+
+    private static String conciseRootCause(Throwable ex) {
+        Throwable root = ex;
+        while (root.getCause() != null && root.getCause() != root) {
+            root = root.getCause();
+        }
+        String type = root.getClass().getSimpleName();
+        String msg = root.getMessage() == null ? "" : root.getMessage().replaceAll("\\s+", " ").trim();
+        if (msg.length() > 140) msg = msg.substring(0, 140) + "...";
+        return msg.isEmpty() ? type : type + " - " + msg;
     }
 
     /** Returns the message only when it is a short, user-facing value with no SQL/stack-trace content. */
