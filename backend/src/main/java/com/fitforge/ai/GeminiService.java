@@ -31,7 +31,7 @@ public class GeminiService {
     private final FitnessKnowledgeService knowledge;
 
     public GeminiService(RestClient.Builder builder, ObjectMapper mapper, FitnessKnowledgeService knowledge,
-                         @Value("${app.gemini.api-key}") String key,
+                         @Value("${app.gemini.api-key:}") String key,
                          @Value("${app.gemini.base-url:https://generativelanguage.googleapis.com/v1beta}") String baseUrl,
                          @Value("${app.gemini.model:gemini-3.5-flash}") String model,
                          @Value("${app.gemini.fallback-model:gemini-flash-lite-latest}") String fallbackModel,
@@ -40,15 +40,27 @@ public class GeminiService {
         requestFactory.setConnectTimeout(Duration.ofSeconds(5));
         requestFactory.setReadTimeout(Duration.ofMillis(Math.max(5000, timeoutMs)));
         this.client = builder.requestFactory(requestFactory).build();
-        if (key == null || key.isBlank() || key.startsWith("your-gemini")) {
+        this.key = resolveApiKey(key);
+        if (this.key.isBlank()) {
             LOG.warn("GEMINI_API_KEY is not configured; AI endpoints will return 503");
         }
         this.mapper = mapper;
         this.knowledge = knowledge;
-        this.key = key;
         this.baseUrl = baseUrl;
         this.model = model;
         this.fallbackModel = fallbackModel;
+    }
+
+    private static String resolveApiKey(String configured) {
+        for (String candidate : new String[]{configured, System.getenv("GEMINI_API_KEY"), System.getenv("GOOGLE_API_KEY")}) {
+            if (candidate != null) {
+                String trimmed = candidate.trim();
+                if (!trimmed.isBlank() && !trimmed.startsWith("your-gemini")) {
+                    return trimmed;
+                }
+            }
+        }
+        return "";
     }
 
     public JsonNode scanCardioScreenshot(byte[] imageBytes, String mimeType) {
