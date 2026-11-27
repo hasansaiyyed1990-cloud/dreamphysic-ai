@@ -23,6 +23,7 @@ public class GeminiService {
 
     private static final String SYSTEM_INSTRUCTION = CoachPersonaPrompt.SYSTEM_INSTRUCTION;
     private static final String DEFAULT_MATH_NOTE = "Deterministic formulas are present in the live profile; use them exactly.";
+    private static final String HISTORY_RULE = "HISTORY RULE: The live profile includes [HISTORICAL PROGRESS] with exact 1M/3M/6M/All-Time rollups and may include [SPECIFIC PAST-PERIOD LOG DIGEST] plus [RECENT COACH CHAT]. For any progress comparison or history question, cite those exact numbers and dates. Never claim you cannot see past months when logged history is present; if a recalled period shows no logs, say no logs were recorded for it.";
 
     private final RestClient client;
     private final ObjectMapper mapper;
@@ -134,7 +135,7 @@ public class GeminiService {
     public String nutritionText(String email, String prompt, AiLiveContextService.LiveContext live) {
         String brain = CoachBrain.build(prompt, live);
         String math = brain.isBlank() ? DEFAULT_MATH_NOTE : brain;
-        String answer = generate(CoachPersonaPrompt.compose(prompt, live.promptBlock(), math, knowledge.retrieve(prompt)), null, true);
+        String answer = generate(CoachPersonaPrompt.compose(prompt + "\n" + HISTORY_RULE, live.promptBlock(), math, knowledge.retrieve(prompt)), null, true);
         return CoachPersonaPrompt.normalizeOrFallback(answer, mapper);
     }
 
@@ -147,7 +148,7 @@ public class GeminiService {
         // Goal/timeline questions get pace or progression math; calorie-burn protocols only answer burn questions.
         String protocol = (brain.isBlank() && StaminaProtocols.applies(originalPrompt))
                 ? StaminaProtocols.build(originalPrompt, live.protocolWeightKg(), live.weightLogged()) : "";
-        String request = task + (protocol.isBlank() ? "" : "\n\nInclude these deterministic stamina protocols in stepByStepPlan: " + protocol);
+        String request = task + "\n" + HISTORY_RULE + (protocol.isBlank() ? "" : "\n\nInclude these deterministic stamina protocols in stepByStepPlan: " + protocol);
         String prompt = CoachPersonaPrompt.compose(request, live.promptBlock(),
                 brain.isBlank() ? DEFAULT_MATH_NOTE : brain, knowledge.retrieve(originalPrompt));
         String answer = generate(prompt, null, true);
@@ -160,7 +161,9 @@ public class GeminiService {
         if (image != null) parts.add(image);
 
         var genConfig = new LinkedHashMap<String, Object>();
-        genConfig.put("temperature", jsonMode ? 0.2 : 0.35);
+        // Slightly warmer than a strict extractor so coach replies read like a human
+        // trainer talking, while the JSON contract keeps the structure stable.
+        genConfig.put("temperature", jsonMode ? 0.3 : 0.4);
         genConfig.put("maxOutputTokens", 4096);
         if (jsonMode) genConfig.put("responseMimeType", "application/json");
 
