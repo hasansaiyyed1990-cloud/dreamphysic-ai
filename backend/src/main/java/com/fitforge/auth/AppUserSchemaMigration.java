@@ -121,7 +121,45 @@ public class AppUserSchemaMigration implements ApplicationRunner {
         }
     }
 
+    private void resyncIdSequence(String table) {
+        // A stale identity/serial sequence makes every insert fail with a duplicate-key
+        // integrity error, which registration would otherwise misreport as a duplicate email.
+        jdbc.execute("SELECT setval(pg_get_serial_sequence('" + table + "', 'id'), COALESCE((SELECT MAX(id) FROM " + table + "), 1), true) WHERE pg_get_serial_sequence('" + table + "', 'id') IS NOT NULL");
+    }
+
+    private void relaxLegacyNotNullColumns(String table) {
+        // Legacy tables can carry NOT NULL columns that AppUser no longer maps
+        // (production had one named "role"). Hibernate inserts omit them, so every
+        // registration failed with SQLState 23502. Give such columns a safe default.
+        List<String> mapped = COLUMN_DEFINITIONS.stream()
+                .map(definition -> definition.substring(0, definition.indexOf(' ')))
+                .toList();
+        List<String[]> legacy = jdbc.query(
+                "SELECT column_name, data_type FROM information_schema.columns " +
+                        "WHERE table_schema = current_schema() AND table_name = ? " +
+                        "AND is_nullable = 'NO' AND column_default IS NULL",
+                (rs, row) -> new String[]{rs.getString(1), rs.getString(2)},
+                table);
+        for (String[] column : legacy) {
+            String name = column[0];
+            if (mapped.contains(name) || !name.matches("[a-z_][a-z0-9_]*")) continue;
+            String fallback = switch (column[1]) {
+                case "character varying", "character", "text" -> "'" + ("role".equals(name) ? "USER" : "") + "'";
+                case "smallint", "integer", "bigint", "numeric", "double precision", "real" -> "0";
+                case "boolean" -> "false";
+                case "timestamp without time zone", "timestamp with time zone", "date" -> "CURRENT_TIMESTAMP";
+                default -> null;
+            };
+            if (fallback == null) continue;
+            jdbc.execute("ALTER TABLE " + table + " ALTER COLUMN " + name + " SET DEFAULT " + fallback);
+            jdbc.update("UPDATE " + table + " SET " + name + " = " + fallback + " WHERE " + name + " IS NULL");
+            LOG.info("Set safe default for legacy NOT NULL column {}.{}", table, name);
+        }
+    }
+
     private void backfillDefaults(String table) {
+        relaxLegacyNotNullColumns(table);
+        resyncIdSequence(table);
         jdbc.update("UPDATE " + table + " SET target_calories = 1800 WHERE target_calories IS NULL");
         jdbc.update("UPDATE " + table + " SET token_version = 0 WHERE token_version IS NULL");
         jdbc.update("UPDATE " + table + " SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL");

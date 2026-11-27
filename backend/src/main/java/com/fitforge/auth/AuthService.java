@@ -62,7 +62,9 @@ public class AuthService {
             // concurrent duplicate registration becomes a clean 409, never a 500.
             u = users.saveAndFlush(u);
         } catch (DataIntegrityViolationException ex) {
-            throw emailConflict();
+            if (isEmailUniqueViolation(ex)) throw emailConflict();
+            LOG.error("Registration failed with a non-email integrity violation for {}", email, ex);
+            throw new IllegalStateException("Registration failed: " + rootMessage(ex), ex);
         }
         return result(u);
     }
@@ -79,6 +81,17 @@ public class AuthService {
         }
         return result(users.findByEmail(email)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid email or password")));
+    }
+
+    private static boolean isEmailUniqueViolation(DataIntegrityViolationException ex) {
+        String detail = String.valueOf(ex.getMostSpecificCause().getMessage()).toLowerCase(Locale.ROOT);
+        return detail.contains("email") && (detail.contains("unique") || detail.contains("duplicate") || detail.contains("idx_fitforge_user_email"));
+    }
+
+    private static String rootMessage(Throwable ex) {
+        Throwable root = ex;
+        while (root.getCause() != null && root.getCause() != root) root = root.getCause();
+        return root.getClass().getSimpleName() + " - " + root.getMessage();
     }
 
     private static ResponseStatusException emailConflict() {
