@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useState, useEffect } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useRef } from 'react';
 import { AuthProvider, useAuth } from './shared/AuthContext.jsx';
 import { BottomNav } from './shared/BottomNav.jsx';
 import { AppHeader } from './shared/AppHeader.jsx';
@@ -36,10 +36,33 @@ function ModuleSuspense({ children }) {
 function AppShell() {
   const { isLoggedIn, user } = useAuth() ?? {};
   const [tab, setTab] = useState('home');
+  const tabHistory = useRef([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [needsSetup, setNeedsSetup] = useState(false);
   const [streak, setStreak] = useState(0);
   const [online, setOnline] = useState(() => (typeof navigator !== 'undefined' ? navigator.onLine : true));
+
+  function navigateTab(nextTab) {
+    if (!nextTab || nextTab === tab) return;
+    tabHistory.current.push(tab);
+    setTab(nextTab);
+    window.history.pushState({ dreamPhysicTab: nextTab }, '', window.location.href);
+  }
+
+  useEffect(() => {
+    // Keep a same-page sentinel so the first Back at Home does not leave the app.
+    window.history.pushState({ dreamPhysicBase: true }, '', window.location.href);
+    const handleBack = () => {
+      const previousTab = tabHistory.current.pop();
+      if (previousTab) {
+        setTab(previousTab);
+        return;
+      }
+      window.history.pushState({ dreamPhysicBase: true }, '', window.location.href);
+    };
+    window.addEventListener('popstate', handleBack);
+    return () => window.removeEventListener('popstate', handleBack);
+  }, []);
 
   useEffect(() => {
     const onOnline = () => setOnline(true);
@@ -95,9 +118,9 @@ function AppShell() {
   const renderTab = () => {
     switch (tab) {
       case 'home':
-        return <HomeModule onNavigate={setTab} />;
+        return <HomeModule onNavigate={navigateTab} />;
       case 'ai':
-        return <FitnessAIModule onNavigate={setTab} />;
+        return <FitnessAIModule onNavigate={navigateTab} />;
       case 'progress':
         return <ProgressModule />;
       case 'workout':
@@ -105,13 +128,13 @@ function AppShell() {
       case 'cardio':
         return <CardioModule />;
       case 'autopilot':
-        return <AutopilotModule onNavigate={setTab} />;
+        return <AutopilotModule onNavigate={navigateTab} />;
       case 'diet':
         return <DietModule />;
       case 'account':
-        return <AccountModule onNavigate={setTab} />;
+        return <AccountModule onNavigate={navigateTab} />;
       default:
-        return <HomeModule onNavigate={setTab} />;
+        return <HomeModule onNavigate={navigateTab} />;
     }
   };
 
@@ -128,7 +151,7 @@ function AppShell() {
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         activeTab={tab}
-        onNavigate={setTab}
+        onNavigate={navigateTab}
       />
 
       <div className="content-safe overflow-auto">
@@ -136,7 +159,7 @@ function AppShell() {
           <ModuleSuspense>{renderTab()}</ModuleSuspense>
         </ErrorBoundary>
       </div>
-      <BottomNav active={tab} onChange={setTab} />
+      <BottomNav active={tab} onChange={navigateTab} />
     </div>
   );
 }

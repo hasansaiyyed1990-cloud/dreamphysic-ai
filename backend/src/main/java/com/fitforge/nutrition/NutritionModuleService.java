@@ -31,8 +31,28 @@ public class NutritionModuleService {
  private final DailyCalorieBalanceRepository balances;
  private final DeadlineChangeRepository deadlineChanges;
  private final WeightRepository weights;
+ private final MealCategoryRepository categories;
+ private final NutritionTargetsRepository targets;
 
- public NutritionModuleService(AppUserRepository users,IndianFoodItemRepository foods,FoodDiaryRepository diary,FavoriteMealRepository favorites,FatLossMissionRepository missions,HydrationFiberRepository hydration,GroceryListRepository groceries,NutritionReminderRepository reminders,ObjectMapper mapper,DailyCalorieBalanceRepository balances,DeadlineChangeRepository deadlineChanges,WeightRepository weights){
+ /** Default slots created for a new account; users can rename, reorder, add or delete them. */
+ private static final String[][] DEFAULT_CATEGORIES = {
+  {"Early Morning","06:00"},{"Breakfast","08:30"},{"Mid-Morning Snack","11:00"},{"Lunch","13:30"},
+  {"Evening Snack","17:00"},{"Pre-Workout","18:00"},{"Post-Workout","20:00"},{"Dinner","21:00"},{"Late-Night Snack","23:00"}
+ };
+
+ /** Reference daily amounts used until the user saves their own targets. */
+ private static final Map<String,Double> DEFAULT_MICRO_TARGETS;
+ static {
+  Map<String,Double> m=new LinkedHashMap<>();
+  m.put("vitaminA",900.0); m.put("vitaminB1",1.2); m.put("vitaminB2",1.3); m.put("vitaminB3",16.0); m.put("vitaminB5",5.0);
+  m.put("vitaminB6",1.3); m.put("vitaminB7",30.0); m.put("vitaminB9",400.0); m.put("vitaminB12",2.4); m.put("vitaminC",90.0);
+  m.put("vitaminD",20.0); m.put("vitaminE",15.0); m.put("vitaminK",120.0);
+  m.put("calcium",1000.0); m.put("iron",14.0); m.put("magnesium",400.0); m.put("zinc",11.0); m.put("potassium",3500.0);
+  m.put("phosphorus",700.0); m.put("selenium",55.0); m.put("copper",0.9); m.put("manganese",2.3); m.put("iodine",150.0);
+  DEFAULT_MICRO_TARGETS=Collections.unmodifiableMap(m);
+ }
+
+ public NutritionModuleService(AppUserRepository users,IndianFoodItemRepository foods,FoodDiaryRepository diary,FavoriteMealRepository favorites,FatLossMissionRepository missions,HydrationFiberRepository hydration,GroceryListRepository groceries,NutritionReminderRepository reminders,ObjectMapper mapper,DailyCalorieBalanceRepository balances,DeadlineChangeRepository deadlineChanges,WeightRepository weights,MealCategoryRepository categories,NutritionTargetsRepository targets){
   this.users=users;
   this.foods=foods;
   this.diary=diary;
@@ -45,6 +65,8 @@ public class NutritionModuleService {
   this.balances=balances;
   this.deadlineChanges=deadlineChanges;
   this.weights=weights;
+  this.categories=categories;
+  this.targets=targets;
  }
 
  private Long uid(String email){return users.findByEmail(email).orElseThrow(()->new IllegalArgumentException("Authenticated user not found")).getId();}
@@ -56,7 +78,7 @@ public class NutritionModuleService {
  }
 
  @Transactional public NutritionModuleDtos.Food customFood(String email,NutritionModuleDtos.CustomFoodInput i){
-  var f=foods.save(new IndianFoodItem(i.name().trim(),i.calories(),i.proteinG(),i.carbsG(),i.fatG(),i.fiberG(),i.defaultUnit(),prep(i.preparationType()),i.servingGrams(),uid(email),true));
+  var f=foods.save(new IndianFoodItem(i.name().trim(),i.calories(),i.proteinG(),i.carbsG(),i.fatG(),i.fiberG(),i.defaultUnit(),prep(i.preparationType()),i.servingGrams(),uid(email),true,writeMicros(i.micros())));
   return foodDto(f);
  }
 
@@ -65,25 +87,59 @@ public class NutritionModuleService {
  private NutritionModuleDtos.DiaryDay day(Long id,LocalDate date){
   var es=diary.findByUserIdAndEntryDateOrderByLoggedAtAsc(id,date);
   double[] t=totals(es);
-  return new NutritionModuleDtos.DiaryDay(date,t[0],t[1],t[2],t[3],t[4],es.stream().map(this::diaryDto).toList());
+  Map<String,Double> micros=new LinkedHashMap<>();
+  for(var e:es) sumInto(micros,parseMicros(e.getMicrosJson()),1);
+  return new NutritionModuleDtos.DiaryDay(date,t[0],t[1],t[2],t[3],t[4],
+   micros.getOrDefault("sugar",0.0),micros.getOrDefault("satFat",0.0),micros.getOrDefault("sodium",0.0),
+   micros,es.stream().map(this::diaryDto).toList());
  }
 
  @Transactional public NutritionModuleDtos.Diary addDiary(String email,NutritionModuleDtos.DiaryInput i){
-  validateCategory(i.mealCategory());
-  if(i.preparationType()!=null)prep(i.preparationType());
   Long id=uid(email);
-  var saved=diary.save(new FoodDiaryEntry(id,calculateFromCatalog(id,i)));
+  validateCategory(id,i.mealCategory());
+  if(i.preparationType()!=null)prep(i.preparationType());
+  var input=calculateFromCatalog(id,i);
+  var saved=diary.save(new FoodDiaryEntry(id,input,writeMicros(input.micros())));
   recalcBalance(id,saved.getEntryDate());
   return diaryDto(saved);
  }
 
+ /** Duplicate one meal slot (all its foods) to another date/category. */
+ @Transactional public NutritionModuleDtos.DiaryDay copyMeal(String email,NutritionModuleDtos.CopyMealInput i){
+  Long id=uid(email);
+  validateCategory(id,i.toCategory());
+  var source=diary.findByUserIdAndEntryDateOrderByLoggedAtAsc(id,i.fromDate()).stream()
+   .filter(e->e.getMealCategory().equalsIgnoreCase(i.fromCategory().trim())).toList();
+  if(source.isEmpty())throw new IllegalArgumentException("Us meal me koi food nahi hai · Nothing to copy");
+  for(var e:source){
+   var input=new NutritionModuleDtos.DiaryInput(i.toDate(),i.toCategory(),e.getFoodName(),e.getQuantity(),e.getUnit(),e.getPreparationType(),e.getCalories(),e.getProteinG(),e.getCarbsG(),e.getFatG(),e.getFiberG(),e.getScanConfidence(),parseMicros(e.getMicrosJson()));
+   diary.save(new FoodDiaryEntry(id,input,e.getMicrosJson()));
+  }
+  recalcBalance(id,i.toDate());
+  return day(id,i.toDate());
+ }
+
+ /** Copy an entire day's diary to another date (meal plan style). */
+ @Transactional public NutritionModuleDtos.DiaryDay copyDay(String email,NutritionModuleDtos.CopyDayInput i){
+  Long id=uid(email);
+  var source=diary.findByUserIdAndEntryDateOrderByLoggedAtAsc(id,i.fromDate());
+  if(source.isEmpty())throw new IllegalArgumentException("Us din kuch log nahi hua · Nothing to copy");
+  for(var e:source){
+   var input=new NutritionModuleDtos.DiaryInput(i.toDate(),e.getMealCategory(),e.getFoodName(),e.getQuantity(),e.getUnit(),e.getPreparationType(),e.getCalories(),e.getProteinG(),e.getCarbsG(),e.getFatG(),e.getFiberG(),e.getScanConfidence(),parseMicros(e.getMicrosJson()));
+   diary.save(new FoodDiaryEntry(id,input,e.getMicrosJson()));
+  }
+  recalcBalance(id,i.toDate());
+  return day(id,i.toDate());
+ }
+
  @Transactional public NutritionModuleDtos.Diary updateDiary(String email,Long id,NutritionModuleDtos.DiaryInput i){
-  validateCategory(i.mealCategory());
-  if(i.preparationType()!=null)prep(i.preparationType());
   Long user=uid(email);
+  validateCategory(user,i.mealCategory());
+  if(i.preparationType()!=null)prep(i.preparationType());
   var e=diary.findByIdAndUserId(id,user).orElseThrow(()->new IllegalArgumentException("Diary entry not found"));
   LocalDate previousDate=e.getEntryDate();
-  e.update(calculateFromCatalog(user,i));
+  var input=calculateFromCatalog(user,i);
+  e.update(input,writeMicros(input.micros()));
   // Editing macros or moving the entry to another day must refresh that day's calorie balance.
   recalcBalance(user,previousDate);
   recalcBalance(user,e.getEntryDate());
@@ -136,14 +192,14 @@ public class NutritionModuleService {
  @Transactional public void deleteFavorite(String email,Long id){favorites.delete(favorites.findByIdAndUserId(id,uid(email)).orElseThrow(()->new IllegalArgumentException("Favorite meal not found")));}
 
  @Transactional public NutritionModuleDtos.DiaryDay logFavorite(String email,Long id,LocalDate date,String category){
-  validateCategory(category);
   Long user=uid(email);
+  validateCategory(user,category);
   var f=favorites.findByIdAndUserId(id,user).orElseThrow(()->new IllegalArgumentException("Favorite meal not found"));
   try{
    var items=mapper.readValue(f.getItemsJson(),new TypeReference<List<NutritionModuleDtos.FavoriteItemInput>>(){});
    for(var item:items){
-    var in=new NutritionModuleDtos.DiaryInput(date,category,item.foodName(),item.quantity(),item.unit(),item.preparationType(),item.calories(),item.proteinG(),item.carbsG(),item.fatG(),item.fiberG(),null);
-    diary.save(new FoodDiaryEntry(user,in));
+    var in=new NutritionModuleDtos.DiaryInput(date,category,item.foodName(),item.quantity(),item.unit(),item.preparationType(),item.calories(),item.proteinG(),item.carbsG(),item.fatG(),item.fiberG(),null,null);
+    diary.save(new FoodDiaryEntry(user,in,null));
    }
   }catch(Exception e){throw new IllegalStateException("Favorite meal items could not be read");}
   recalcBalance(user,date);
@@ -240,7 +296,7 @@ public class NutritionModuleService {
   LocalDate end=to==null?LocalDate.now(IST):to;
   LocalDate start=from==null?end.minusDays(Math.max(1,days)-1L):from;
   if(start.isAfter(end))throw new IllegalArgumentException("startDate must be on or before endDate");
-  if(from==null&&days!=7&&days!=30&&days!=90)throw new IllegalArgumentException("days must be 7, 30, or 90");
+  if(from==null&&(days<1||days>366))throw new IllegalArgumentException("days must be between 1 and 366");
   var es=diary.findByUserIdAndEntryDateBetweenOrderByEntryDateAscLoggedAtAsc(id,start,end);
   Map<LocalDate,List<FoodDiaryEntry>> map=new HashMap<>();
   es.forEach(e->map.computeIfAbsent(e.getEntryDate(),k->new ArrayList<>()).add(e));
@@ -273,6 +329,131 @@ public class NutritionModuleService {
    if(!list.isEmpty()&&score<bestScore){bestScore=score;best=d;}
   }
   return new NutritionModuleDtos.Analytics(start,end,sum[0]/n,sum[1]/n,sum[2]/n,sum[3]/n,sum[4]/n,loggedDays==0?0:deficit/loggedDays,100.0*consistent/n,best==null?null:best.toString(),missed,daily);
+ }
+
+ /** order: code, label, unit, limitType (MIN = target to reach, MAX = upper limit). */
+ private static final String[][] MICRO_DEFS = {
+  {"vitaminA","Vitamin A","µg","MIN"},{"vitaminB1","Vitamin B1","mg","MIN"},{"vitaminB2","Vitamin B2","mg","MIN"},
+  {"vitaminB3","Vitamin B3","mg","MIN"},{"vitaminB5","Vitamin B5","mg","MIN"},{"vitaminB6","Vitamin B6","mg","MIN"},
+  {"vitaminB7","Vitamin B7","µg","MIN"},{"vitaminB9","Vitamin B9","µg","MIN"},{"vitaminB12","Vitamin B12","µg","MIN"},
+  {"vitaminC","Vitamin C","mg","MIN"},{"vitaminD","Vitamin D","µg","MIN"},{"vitaminE","Vitamin E","mg","MIN"},{"vitaminK","Vitamin K","µg","MIN"},
+  {"calcium","Calcium","mg","MIN"},{"iron","Iron","mg","MIN"},{"magnesium","Magnesium","mg","MIN"},{"zinc","Zinc","mg","MIN"},
+  {"potassium","Potassium","mg","MIN"},{"phosphorus","Phosphorus","mg","MIN"},{"selenium","Selenium","µg","MIN"},
+  {"copper","Copper","mg","MIN"},{"manganese","Manganese","mg","MIN"},{"iodine","Iodine","µg","MIN"},
+  {"sodium","Sodium","mg","MAX"},{"sugar","Sugar","g","MAX"},{"satFat","Saturated fat","g","MAX"}
+ };
+
+ public List<NutritionModuleDtos.Micronutrient> micronutrients(String email,LocalDate date){
+  Long id=uid(email);
+  var day=day(id,date);
+  var t=targets(email);
+  List<NutritionModuleDtos.Micronutrient> out=new ArrayList<>();
+  for(var d:MICRO_DEFS){
+   String code=d[0];
+   boolean hasData=day.micros().containsKey(code);
+   double consumed=day.micros().getOrDefault(code,0.0);
+   Double target;
+   if(code.equals("sodium"))target=t.sodiumMgMax();
+   else if(code.equals("sugar"))target=t.sugarGMax();
+   else if(code.equals("satFat"))target=22.0;
+   else{
+    Double fallback=DEFAULT_MICRO_TARGETS.get(code);
+    Double saved=t.micros()==null?null:t.micros().get(code);
+    target=saved!=null?saved:fallback;
+   }
+   if(target==null)target=0.0;
+   boolean max="MAX".equals(d[3]);
+   double remaining=Math.max(0,target-consumed);
+   double percent=target<=0?0:round1(consumed*100.0/target);
+   String status;
+   if(!hasData)status="NO_DATA";
+   else if(max)status=consumed>target?"OVER_LIMIT":"ON_TRACK";
+   else status=percent>=100?"MET":percent>=70?"ON_TRACK":"BELOW";
+   out.add(new NutritionModuleDtos.Micronutrient(code,d[1],d[2],target,round1(consumed),round1(remaining),percent,hasData,status));
+  }
+  return out;
+ }
+
+ // ---------- Meal categories (custom, ordered, timed) ----------
+
+ public List<NutritionModuleDtos.MealCategory> categories(String email){
+  Long id=uid(email);
+  var list=categories.findByUserIdOrderBySortOrderAscNameAsc(id);
+  if(list.isEmpty())list=seedCategories(id);
+  return list.stream().map(this::categoryDto).toList();
+ }
+
+ private List<MealCategory> seedCategories(Long userId){
+  List<MealCategory> created=new ArrayList<>();
+  for(int i=0;i<DEFAULT_CATEGORIES.length;i++){
+   created.add(new MealCategory(userId,DEFAULT_CATEGORIES[i][0],i*10,DEFAULT_CATEGORIES[i][1],true));
+  }
+  return categories.saveAll(created);
+ }
+
+ @Transactional public NutritionModuleDtos.MealCategory addCategory(String email,NutritionModuleDtos.MealCategoryInput i){
+  Long id=uid(email);
+  categories(id);
+  String name=i.name().trim();
+  if(categories.existsByUserIdAndNameIgnoreCase(id,name))throw new IllegalArgumentException("Ye meal category already hai · Category already exists");
+  int order=i.sortOrder()==null?nextCategoryOrder(id):i.sortOrder();
+  return categoryDto(categories.save(new MealCategory(id,name,order,i.timeLabel(),false)));
+ }
+
+ @Transactional public NutritionModuleDtos.MealCategory updateCategory(String email,Long id,NutritionModuleDtos.MealCategoryInput i){
+  Long user=uid(email);
+  var c=categories.findByIdAndUserId(id,user).orElseThrow(()->new IllegalArgumentException("Meal category not found"));
+  String name=i.name()==null?null:i.name().trim();
+  if(name!=null&&!name.equalsIgnoreCase(c.getName())&&categories.existsByUserIdAndNameIgnoreCase(user,name))
+   throw new IllegalArgumentException("Ye meal category already hai · Category already exists");
+  c.update(name,i.sortOrder(),i.timeLabel());
+  return categoryDto(categories.save(c));
+ }
+
+ @Transactional public void reorderCategories(String email,NutritionModuleDtos.CategoryReorderInput i){
+  Long user=uid(email);
+  List<Long> ids=i.ids();
+  for(int idx=0;idx<ids.size();idx++){
+   int order=idx*10;
+   categories.findByIdAndUserId(ids.get(idx),user).ifPresent(c->{c.moveTo(order);categories.save(c);});
+  }
+ }
+
+ /** Delete a slot. History is never dropped: entries move to the target slot (or the delete is refused). */
+ @Transactional public void deleteCategory(String email,Long id,Long moveEntriesToId){
+  Long user=uid(email);
+  var c=categories.findByIdAndUserId(id,user).orElseThrow(()->new IllegalArgumentException("Meal category not found"));
+  var all=diary.findByUserIdAndEntryDateBetweenOrderByEntryDateAscLoggedAtAsc(user,LocalDate.of(2000,1,1),LocalDate.of(2100,1,1));
+  var affected=all.stream().filter(e->e.getMealCategory().equalsIgnoreCase(c.getName())).toList();
+  if(!affected.isEmpty()){
+   if(moveEntriesToId==null)throw new IllegalArgumentException("Is category me "+affected.size()+" logged entries hain. Pehle batayein kahan move karein.");
+   var target=categories.findByIdAndUserId(moveEntriesToId,user).orElseThrow(()->new IllegalArgumentException("Target meal category not found"));
+   affected.forEach(e->{e.moveCategory(target.getName());diary.save(e);});
+  }
+  categories.delete(c);
+ }
+
+ // ---------- Custom nutrition targets ----------
+
+ public NutritionModuleDtos.Targets targets(String email){
+  Long id=uid(email);
+  return targets.findByUserId(id).map(this::targetsDto).orElseGet(()->defaultTargets(id));
+ }
+
+ @Transactional public NutritionModuleDtos.Targets saveTargets(String email,NutritionModuleDtos.TargetsInput i){
+  Long id=uid(email);
+  var t=targets.findByUserId(id).orElseGet(()->new NutritionTargets(id,i,writeMicros(i.micros())));
+  t.apply(i);
+  t.setMicrosJson(writeMicros(i.micros()));
+  return targetsDto(targets.save(t));
+ }
+
+ private NutritionModuleDtos.Targets defaultTargets(Long userId){
+  var m=missions.findByUserId(userId).orElse(null);
+  double cal=m==null?2000:Math.max(1200,m.getDailyCalorieBudget());
+  double startWeight=m==null?0:m.getStartWeightKg();
+  double protein=startWeight>0?Math.round(startWeight*1.6):120;
+  return new NutritionModuleDtos.Targets(cal,protein,round1(cal*0.45/4),round1(cal*0.25/9),25,2500,2300,50,DEFAULT_MICRO_TARGETS);
  }
 
  public NutritionModuleDtos.Hydration hydration(String email,LocalDate date){
@@ -353,8 +534,38 @@ public class NutritionModuleService {
 
  public List<NutritionModuleDtos.Diary> recentDiary(String email,LocalDate from,LocalDate to){return diary.findByUserIdAndEntryDateBetweenOrderByEntryDateAscLoggedAtAsc(uid(email),from,to).stream().map(this::diaryDto).toList();}
 
- private NutritionModuleDtos.Food foodDto(IndianFoodItem f){return new NutritionModuleDtos.Food(f.getId(),f.getName(),f.getCalories(),f.getProteinG(),f.getCarbsG(),f.getFatG(),f.getFiberG(),f.getDefaultUnit(),f.getPreparationType(),f.isCustom(),f.getUserId(),f.getServingGrams());}
- private NutritionModuleDtos.Diary diaryDto(FoodDiaryEntry e){return new NutritionModuleDtos.Diary(e.getId(),e.getUserId(),e.getEntryDate(),e.getLoggedAt(),e.getMealCategory(),e.getFoodName(),e.getQuantity(),e.getUnit(),e.getPreparationType(),e.getCalories(),e.getProteinG(),e.getCarbsG(),e.getFatG(),e.getFiberG(),e.getScanConfidence());}
+ private NutritionModuleDtos.Food foodDto(IndianFoodItem f){return new NutritionModuleDtos.Food(f.getId(),f.getName(),f.getCalories(),f.getProteinG(),f.getCarbsG(),f.getFatG(),f.getFiberG(),f.getDefaultUnit(),f.getPreparationType(),f.isCustom(),f.getUserId(),f.getServingGrams(),parseMicros(f.getMicrosJson()));}
+ private NutritionModuleDtos.Diary diaryDto(FoodDiaryEntry e){return new NutritionModuleDtos.Diary(e.getId(),e.getUserId(),e.getEntryDate(),e.getLoggedAt(),e.getMealCategory(),e.getFoodName(),e.getQuantity(),e.getUnit(),e.getPreparationType(),e.getCalories(),e.getProteinG(),e.getCarbsG(),e.getFatG(),e.getFiberG(),e.getScanConfidence(),parseMicros(e.getMicrosJson()));}
+ private NutritionModuleDtos.MealCategory categoryDto(MealCategory c){return new NutritionModuleDtos.MealCategory(c.getId(),c.getName(),c.getSortOrder(),c.getTimeLabel(),c.isDefault());}
+ private NutritionModuleDtos.Targets targetsDto(NutritionTargets t){return new NutritionModuleDtos.Targets(t.getCalories(),t.getProteinG(),t.getCarbsG(),t.getFatG(),t.getFiberG(),t.getWaterMl(),t.getSodiumMgMax(),t.getSugarGMax(),parseMicros(t.getMicrosJson()));}
+
+ private int nextCategoryOrder(Long userId){return categories.findByUserIdOrderBySortOrderAscNameAsc(userId).stream().mapToInt(MealCategory::getSortOrder).max().orElse(0)+10;}
+
+ private Map<String,Double> parseMicros(String json){
+  if(json==null||json.isBlank())return Map.of();
+  try{return mapper.readValue(json,new TypeReference<Map<String,Double>>(){});}catch(Exception e){return Map.of();}
+ }
+
+ private String writeMicros(Map<String,Double> micros){
+  if(micros==null||micros.isEmpty())return null;
+  Map<String,Double> clean=new LinkedHashMap<>();
+  micros.forEach((k,v)->{if(k!=null&&v!=null&&!k.isBlank()&&v.doubleValue()!=0)clean.put(k,round1(v.doubleValue()));});
+  return clean.isEmpty()?null:write(clean);
+ }
+
+ private Map<String,Double> scaleMicros(Map<String,Double> base,double factor){
+  if(base==null||base.isEmpty())return Map.of();
+  Map<String,Double> scaled=new LinkedHashMap<>();
+  base.forEach((k,v)->{if(v!=null)scaled.put(k,round1(v.doubleValue()*factor));});
+  return scaled;
+ }
+
+ private void sumInto(Map<String,Double> totals,Map<String,Double> add,double factor){
+  if(add==null)return;
+  add.forEach((k,v)->{if(v!=null)totals.merge(k,round1(v.doubleValue()*factor),Double::sum);});
+ }
+
+ private double round1(double v){return Math.round(v*10.0)/10.0;}
  private NutritionModuleDtos.Favorite favoriteDto(FavoriteMeal f){return new NutritionModuleDtos.Favorite(f.getId(),f.getName(),f.getItemsJson(),f.getCalories(),f.getProteinG(),f.getCarbsG(),f.getFatG(),f.getFiberG()==null?0:f.getFiberG());}
  private NutritionModuleDtos.Grocery groceryDto(GroceryList g){return new NutritionModuleDtos.Grocery(g.getId(),g.getWeekStartDate(),g.getItemsJson());}
  private NutritionModuleDtos.Mission missionDto(FatLossMission m,double c,double cumulative){return new NutritionModuleDtos.Mission(m.getId(),m.getStartWeightKg(),m.getTargetWeightKg(),m.getStartDate(),m.getTargetDate(),m.getMaintenanceCalories(),m.getDailyCalorieBudget(),c,m.getDailyCalorieBudget()-c,m.getMaintenanceCalories()-c,cumulative);}
@@ -393,6 +604,7 @@ public class NutritionModuleService {
 
  private NutritionModuleDtos.DiaryInput calculateFromCatalog(Long id,NutritionModuleDtos.DiaryInput i){
   if(i.scanConfidence()!=null)return i;
+  boolean customMicros=i.micros()!=null&&!i.micros().isEmpty();
   var f=foods.findFirstByUserIdAndNameIgnoreCase(id,i.foodName()).or(()->foods.findFirstByUserIdIsNullAndNameIgnoreCase(i.foodName())).orElse(null);
   if(f==null)return i;
   String unit=i.unit().trim().toLowerCase(Locale.ROOT);
@@ -401,11 +613,22 @@ public class NutritionModuleService {
   else if(unit.equalsIgnoreCase(f.getDefaultUnit()))grams=i.quantity()*f.getServingGrams();
   else return i;
   double factor=grams/100.0;
-  return new NutritionModuleDtos.DiaryInput(i.entryDate(),i.mealCategory(),i.foodName(),i.quantity(),i.unit(),i.preparationType()==null?f.getPreparationType():i.preparationType(),f.getCalories()*factor,f.getProteinG()*factor,f.getCarbsG()*factor,f.getFatG()*factor,f.getFiberG()*factor,null);
+  return new NutritionModuleDtos.DiaryInput(i.entryDate(),i.mealCategory(),i.foodName(),i.quantity(),i.unit(),i.preparationType()==null?f.getPreparationType():i.preparationType(),f.getCalories()*factor,f.getProteinG()*factor,f.getCarbsG()*factor,f.getFatG()*factor,f.getFiberG()*factor,null,customMicros?i.micros():scaleMicros(parseMicros(f.getMicrosJson()),factor));
  }
 
- private void validateCategory(String s){
-  if(!Set.of("BREAKFAST","LUNCH","SNACKS","PRE_WORKOUT","DINNER").contains(s.toUpperCase(Locale.ROOT)))throw new IllegalArgumentException("mealCategory must be BREAKFAST, LUNCH, SNACKS, PRE_WORKOUT, or DINNER");
+ /** Meal slots are user-defined, so validation checks the user's own list. */
+ private void validateCategory(Long userId,String s){
+  if(s==null||s.isBlank())throw new IllegalArgumentException("Meal category is required");
+  var list=categories.findByUserIdOrderBySortOrderAscNameAsc(userId);
+  if(list.isEmpty())list=seedCategories(userId);
+  boolean ok=list.stream().anyMatch(c->c.getName().equalsIgnoreCase(s.trim()));
+  if(!ok)throw new IllegalArgumentException("Unknown meal category: "+s.trim());
+ }
+
+ private List<NutritionModuleDtos.MealCategory> categories(Long userId){
+  var list=categories.findByUserIdOrderBySortOrderAscNameAsc(userId);
+  if(list.isEmpty())list=seedCategories(userId);
+  return list.stream().map(this::categoryDto).toList();
  }
 
  private double[] totals(List<FoodDiaryEntry> es){

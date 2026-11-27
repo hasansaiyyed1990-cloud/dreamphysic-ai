@@ -69,7 +69,7 @@ export async function api(path, { method = 'GET', body, token, signal, timeoutMs
   }
 }
 
-export async function apiUpload(path, { file, token, signal, timeoutMs = 45000 } = {}) {
+export async function apiUpload(path, { file, token, signal, timeoutMs = 45000, fields } = {}) {
   const tok = token ?? getToken();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -80,6 +80,11 @@ export async function apiUpload(path, { file, token, signal, timeoutMs = 45000 }
 
   const form = new FormData();
   form.append('image', file);
+  if (fields && typeof fields === 'object') {
+    for (const [key, value] of Object.entries(fields)) {
+      if (value !== undefined && value !== null) form.append(key, String(value));
+    }
+  }
 
   try {
     const res = await fetch(`${BASE}${path}`, {

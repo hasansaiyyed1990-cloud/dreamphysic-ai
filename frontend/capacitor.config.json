@@ -1,0 +1,6 @@
+{
+  "appId": "com.dreamphysic.ai",
+  "appName": "Dream Physic AI",
+  "webDir": "dist",
+  "server": { "androidScheme": "https" }
+}
