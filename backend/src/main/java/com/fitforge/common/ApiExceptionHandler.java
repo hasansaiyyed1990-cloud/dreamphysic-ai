@@ -90,9 +90,28 @@ public class ApiExceptionHandler {
     @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
     ResponseEntity<ApiResponse<Void>> integrity(org.springframework.dao.DataIntegrityViolationException ex) {
         LOG.warn("Data integrity violation", ex);
-        boolean tooLong = String.valueOf(ex.getMostSpecificCause().getMessage()).contains("too long");
-        return ResponseEntity.status(tooLong ? HttpStatus.BAD_REQUEST : HttpStatus.CONFLICT)
-                .body(ApiResponse.error(tooLong ? "A text field is too long" : "Conflicts with existing data"));
+        Throwable cause = ex.getMostSpecificCause();
+        String causeMessage = cause == null || cause.getMessage() == null ? "" : cause.getMessage();
+        boolean tooLong = causeMessage.contains("too long");
+        if (tooLong) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("A text field is too long"));
+        }
+        String detail = constraintDetail(ex, causeMessage);
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.error(detail.isBlank() ? "Conflicts with existing data" : "Conflicts with existing data: " + detail));
+    }
+
+    private static String constraintDetail(Throwable ex, String causeMessage) {
+        for (Throwable current = ex; current != null; current = current.getCause()) {
+            if (current instanceof org.hibernate.exception.ConstraintViolationException violation
+                    && violation.getConstraintName() != null && !violation.getConstraintName().isBlank()) {
+                return "constraint " + violation.getConstraintName();
+            }
+        }
+        if (causeMessage.isBlank()) return "";
+        String detail = causeMessage.replaceAll("\\s+", " ").strip();
+        if (detail.length() > 180) detail = detail.substring(0, 180);
+        return detail;
     }
 
     @ExceptionHandler(org.hibernate.exception.DataException.class)

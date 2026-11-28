@@ -89,17 +89,9 @@ public class WorkoutIdentitySequenceMigration implements ApplicationRunner {
                 "SELECT pg_get_serial_sequence(?, 'id')", String.class, table);
         if (sequence == null || sequence.isBlank()) return;
 
-        Long maxId = jdbc.queryForObject("SELECT MAX(id) FROM " + table, Long.class);
-        if (maxId == null) return;
-
-        String unqualifiedSequence = sequence.substring(sequence.lastIndexOf('.') + 1).replace("\"", "");
-        Long sequenceValue = jdbc.query(
-                "SELECT last_value FROM pg_sequences WHERE schemaname = current_schema() AND sequencename = ?",
-                result -> result.next() ? (Long) result.getObject(1) : null,
-                unqualifiedSequence);
-        if (sequenceValue == null || sequenceValue < maxId) {
-            jdbc.queryForObject("SELECT setval(CAST(? AS regclass), ?, true)", Long.class, sequence, maxId);
-            LOG.warn("Advanced stale PostgreSQL ID sequence for {} to {}", table, maxId);
-        }
+        Long nextId = jdbc.queryForObject(
+                "SELECT COALESCE(MAX(id), 0) + 1 FROM " + table, Long.class);
+        jdbc.queryForObject("SELECT setval(CAST(? AS regclass), ?, false)", Long.class, sequence, nextId);
+        LOG.info("Synchronized PostgreSQL ID sequence for {} so the next id is {}", table, nextId);
     }
 }
