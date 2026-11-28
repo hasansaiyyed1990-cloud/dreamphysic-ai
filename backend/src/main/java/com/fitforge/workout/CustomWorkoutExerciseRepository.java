@@ -4,6 +4,7 @@ import java.util.*;
 public interface CustomWorkoutExerciseRepository extends JpaRepository<CustomWorkoutExercise,Long>{
     List<CustomWorkoutExercise> findByUserEmailAndDeletedFalseOrderByMuscleGroupAscNameAsc(String email);
     Optional<CustomWorkoutExercise> findByIdAndUserEmail(Long id,String email);
+    Optional<CustomWorkoutExercise> findFirstByUserEmailAndNameIgnoreCaseOrderByIdDesc(String email,String name);
     Optional<CustomWorkoutExercise> findByUserEmailAndNameIgnoreCaseAndDeletedFalse(String email,String name);
     boolean existsByUserEmailAndNameIgnoreCaseAndDeletedFalse(String email,String name);
 }
