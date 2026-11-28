@@ -13,8 +13,11 @@ import java.util.List;
         return sections.findByUserEmailOrderBySortOrderAscIdAsc(email).stream().map(this::view).toList();
     }
     @Transactional public WorkoutDtos.SectionView create(String email,WorkoutDtos.SectionInput i){
+        String name=i.name().trim();
+        var existing=sections.findFirstByUserEmailAndNameIgnoreCaseOrderByIdAsc(email,name);
+        if(existing.isPresent()) return view(existing.get());
         int order=sections.findByUserEmailOrderBySortOrderAscIdAsc(email).size();
-        return view(sections.save(new WorkoutSection(email,i.name(),order)));
+        return view(sections.save(new WorkoutSection(email,name,order)));
     }
     @Transactional public WorkoutDtos.SectionView rename(String email,Long id,WorkoutDtos.SectionInput i){
         var s=owned(email,id); s.rename(i.name()); return view(sections.save(s));
