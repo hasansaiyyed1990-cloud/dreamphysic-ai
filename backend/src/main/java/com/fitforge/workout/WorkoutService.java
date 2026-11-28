@@ -32,12 +32,32 @@ import com.fasterxml.jackson.databind.ObjectMapper;
     @Transactional(readOnly=true) public List<WorkoutDtos.Session> history(String email,LocalDate from,LocalDate to,String muscle,String subMuscle,String equipment,String exercise){LocalDateTime start=from==null?LocalDate.of(1970,1,1).atStartOfDay():from.atStartOfDay();LocalDateTime end=(to==null?LocalDate.now().plusDays(1):to.plusDays(1)).atStartOfDay().minusNanos(1);String m=norm(muscle),sm=norm(subMuscle),eq=norm(equipment),ex=norm(exercise);return sessions.findByUserEmailAndSessionDateBetweenOrderBySessionDateDesc(email,start,end).stream().map(s->{var filtered=s.getSets().stream().filter(x->m.isBlank()||contains(x.getMuscleGroup(),m)||contains(x.getSubMuscle(),m)).filter(x->sm.isBlank()||contains(x.getSubMuscle(),sm)).filter(x->eq.isBlank()||contains(x.getEquipment(),eq)).filter(x->ex.isBlank()||contains(x.getExerciseName(),ex)).map(this::set).toList();return new WorkoutDtos.Session(s.getId(),s.getName(),s.getSessionDate(),filtered);}).filter(s->!s.sets().isEmpty()).toList();}
     @Transactional(readOnly=true) public WorkoutDtos.HistoryAnalytics historyAnalytics(String email,LocalDate from,LocalDate to){var rows=history(email,from,to,null,null,null,null);var all=rows.stream().flatMap(s->s.sets().stream()).toList();return new WorkoutDtos.HistoryAnalytics(rows.size(),all.size(),all.stream().mapToInt(WorkoutDtos.SetEntry::reps).sum(),all.stream().mapToDouble(s->s.weightKg()*s.reps()).sum(),all.stream().mapToDouble(WorkoutDtos.SetEntry::weightKg).max().orElse(0),all.stream().map(WorkoutDtos.SetEntry::exerciseName).distinct().toList().size(),from,to);}
     @Transactional(readOnly=true) public List<WorkoutDtos.CustomExercise> customExercises(String email){return customExercises.findByUserEmailAndDeletedFalseOrderByMuscleGroupAscNameAsc(email).stream().map(this::customExercise).toList();}
-    @Transactional public WorkoutDtos.CustomExercise saveCustomExercise(String email,WorkoutDtos.CustomExerciseInput input){var row=customExercises.findFirstByUserEmailAndNameIgnoreCaseOrderByIdDesc(email,input.name()).orElseGet(()->new CustomWorkoutExercise(email,input,json(input.primaryMuscles()),json(input.secondaryMuscles())));row.update(input,json(input.primaryMuscles()),json(input.secondaryMuscles()));return customExercise(customExercises.save(row));}
+    @Transactional public WorkoutDtos.CustomExercise saveCustomExercise(String email,WorkoutDtos.CustomExerciseInput input){
+        String trimmedName=input.name().trim();
+        var active=customExercises.findByUserEmailAndNameIgnoreCaseAndDeletedFalse(email,trimmedName);
+        if(active.isPresent()){
+            var row=active.get();
+            row.update(input,json(input.primaryMuscles()),json(input.secondaryMuscles()));
+            return customExercise(customExercises.save(row));
+        }
+        var created=new CustomWorkoutExercise(email,input,json(input.primaryMuscles()),json(input.secondaryMuscles()));
+        return customExercise(customExercises.save(created));
+    }
     @Transactional public WorkoutDtos.CustomExercise updateCustomExercise(String email,Long id,WorkoutDtos.CustomExerciseInput input){var row=customExercises.findByIdAndUserEmail(id,email).filter(x->!x.isDeleted()).orElseThrow(()->new IllegalArgumentException("Custom exercise not found"));row.update(input,json(input.primaryMuscles()),json(input.secondaryMuscles()));return customExercise(customExercises.save(row));}
     @Transactional public WorkoutDtos.CustomExercise duplicateCustomExercise(String email,Long id){var old=customExercises.findByIdAndUserEmail(id,email).filter(x->!x.isDeleted()).orElseThrow(()->new IllegalArgumentException("Custom exercise not found"));String copy=old.getName()+" Copy";int n=2;while(customExercises.existsByUserEmailAndNameIgnoreCaseAndDeletedFalse(email,copy))copy=old.getName()+" Copy "+(n++);var input=new WorkoutDtos.CustomExerciseInput(copy,old.getMuscleGroup(),old.getSubMuscle(),old.getEquipment(),list(old.getPrimaryMusclesJson()),list(old.getSecondaryMusclesJson()),old.getTrackingType(),old.getNotes());return customExercise(customExercises.save(new CustomWorkoutExercise(email,input,json(input.primaryMuscles()),json(input.secondaryMuscles()))));}
     @Transactional public void deleteCustomExercise(String email,Long id){var row=customExercises.findByIdAndUserEmail(id,email).orElseThrow(()->new IllegalArgumentException("Custom exercise not found"));row.softDelete();}
     @Transactional(readOnly=true) public List<WorkoutDtos.Routine> routines(String email){return routines.findByUserEmailAndDeletedFalseOrderByNameAsc(email).stream().map(this::routine).toList();}
-    @Transactional public WorkoutDtos.Routine saveRoutine(String email,WorkoutDtos.RoutineInput input){var row=new WorkoutRoutine(email,input,json(input.exercises()));return routine(routines.save(row));}
+    @Transactional public WorkoutDtos.Routine saveRoutine(String email,WorkoutDtos.RoutineInput input){
+        String trimmedName=input.name().trim();
+        var active=routines.findByUserEmailAndNameIgnoreCaseAndDeletedFalse(email,trimmedName);
+        if(active.isPresent()){
+            var row=active.get();
+            row.update(input,json(input.exercises()));
+            return routine(routines.save(row));
+        }
+        var row=new WorkoutRoutine(email,input,json(input.exercises()));
+        return routine(routines.save(row));
+    }
     @Transactional public WorkoutDtos.Routine updateRoutine(String email,Long id,WorkoutDtos.RoutineInput input){var row=routines.findByIdAndUserEmail(id,email).filter(x->!x.isDeleted()).orElseThrow(()->new IllegalArgumentException("Routine not found"));row.update(input,json(input.exercises()));return routine(routines.save(row));}
     @Transactional public WorkoutDtos.Routine duplicateRoutine(String email,Long id){var old=routines.findByIdAndUserEmail(id,email).filter(x->!x.isDeleted()).orElseThrow(()->new IllegalArgumentException("Routine not found"));var in=new WorkoutDtos.RoutineInput(old.getName()+" Copy",old.getSplit(),old.isHomeWorkout(),routineExercises(old.getExercisesJson()));return routine(routines.save(new WorkoutRoutine(email,in,json(in.exercises()))));}
     @Transactional public void deleteRoutine(String email,Long id){var row=routines.findByIdAndUserEmail(id,email).orElseThrow(()->new IllegalArgumentException("Routine not found"));row.softDelete();}
