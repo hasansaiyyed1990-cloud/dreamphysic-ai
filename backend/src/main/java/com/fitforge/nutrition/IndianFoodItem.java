@@ -36,6 +36,20 @@ public class IndianFoodItem {
         this.microsJson = microsJson;
     }
 
+    /** Only user-owned custom foods are edited through this path. */
+    public void update(String name, double calories, double proteinG, double carbsG, double fatG, double fiberG, String unit, String preparation, double servingGrams, String microsJson) {
+        this.name = name;
+        this.calories = calories;
+        this.proteinG = proteinG;
+        this.carbsG = carbsG;
+        this.fatG = fatG;
+        this.fiberG = fiberG;
+        this.defaultUnit = unit;
+        this.preparationType = preparation;
+        this.servingGrams = servingGrams;
+        this.microsJson = microsJson;
+    }
+
     public Long getId() { return id; }
     public Long getUserId() { return userId; }
     public String getName() { return name; }

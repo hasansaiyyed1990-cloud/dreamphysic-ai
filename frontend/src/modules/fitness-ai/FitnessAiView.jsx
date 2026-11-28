@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { api } from '../../shared/api.js';
 import { useAuth } from '../../shared/AuthContext.jsx';
+import { getLocalIstDateString } from '../../shared/date.js';
 import { Spinner, ErrorMsg } from '../../shared/ui.jsx';
 
 const STARTER_CHIPS = [
@@ -218,9 +219,31 @@ export default function FitnessAiView({ onNavigate }) {
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
   const [listening, setListening] = useState(false);
+  const [liveSnap, setLiveSnap] = useState('');
 
   const abortRef = useRef(null);
   const endRef = useRef(null);
+
+  useEffect(() => {
+    const today = getLocalIstDateString();
+    Promise.allSettled([
+      api('/progress/weight/weekly'),
+      api(`/nutrition/diary/${today}`),
+      api('/cardio/overview'),
+    ]).then(([w, d, c]) => {
+      const parts = [];
+      if (w.status === 'fulfilled' && w.value?.endWeightKg) {
+        parts.push(`Weight: ${w.value.endWeightKg}kg (7d change: ${w.value.changeKg ?? 0}kg)`);
+      }
+      if (d.status === 'fulfilled' && d.value) {
+        parts.push(`Today's intake: ${Math.round(d.value.calories || 0)} kcal, ${Math.round(d.value.proteinG || 0)}g protein`);
+      }
+      if (c.status === 'fulfilled' && c.value?.weeklyCalories) {
+        parts.push(`Weekly cardio burn: ${c.value.weeklyCalories} kcal`);
+      }
+      if (parts.length) setLiveSnap(`[Live Snapshot: ${parts.join(' | ')}]\n`);
+    }).catch(() => {});
+  }, []);
 
   const hasSpeech =
     typeof window !== 'undefined' &&
@@ -249,7 +272,7 @@ export default function FitnessAiView({ onNavigate }) {
       try {
         const res = await api('/autopilot/coach', {
           method: 'POST',
-          body: { prompt },
+          body: { prompt: liveSnap ? `${liveSnap}${prompt}` : prompt },
           signal: controller.signal,
         });
         setMessages((m) => [...m, { role: 'ai', payload: res }]);

@@ -160,7 +160,7 @@ class ProductionCriticalScenariosTest {
     }
 
     @Test
-    void identicalWorkoutSetAndMealPostsConflictWithinFiveSeconds() throws Exception {
+    void repeatedWorkoutSetAndMealPostsAreNotBlockedByDuplicateTimer() throws Exception {
         JsonNode workout = postJson(token, "/api/workouts", """
                 {"name":"Idempotency session","sessionDate":"%s"}
                 """.formatted(LocalDateTime.now(IST)));
@@ -169,13 +169,13 @@ class ProductionCriticalScenariosTest {
         mvc.perform(bearer(post("/api/workouts/" + workoutId + "/sets"), token).contentType(MediaType.APPLICATION_JSON).content(set))
                 .andExpect(status().isOk());
         mvc.perform(bearer(post("/api/workouts/" + workoutId + "/sets"), token).contentType(MediaType.APPLICATION_JSON).content(set))
-                .andExpect(status().isConflict());
+                .andExpect(status().isOk());
 
         String meal = mealJson(LocalDate.now(IST), 300);
         mvc.perform(bearer(post("/api/nutrition/diary"), token).contentType(MediaType.APPLICATION_JSON).content(meal))
                 .andExpect(status().isOk());
         mvc.perform(bearer(post("/api/nutrition/diary"), token).contentType(MediaType.APPLICATION_JSON).content(meal))
-                .andExpect(status().isConflict());
+                .andExpect(status().isOk());
     }
 
     @Test

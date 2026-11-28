@@ -6,8 +6,10 @@ import com.fitforge.auth.AppUserRepository;
 import com.fitforge.ai.AiDtos;
 import com.fitforge.progress.WeightRepository;
 import com.fitforge.progress.WeightEntry;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.*;
 import java.time.temporal.TemporalAdjusters;
@@ -80,6 +82,23 @@ public class NutritionModuleService {
  @Transactional public NutritionModuleDtos.Food customFood(String email,NutritionModuleDtos.CustomFoodInput i){
   var f=foods.save(new IndianFoodItem(i.name().trim(),i.calories(),i.proteinG(),i.carbsG(),i.fatG(),i.fiberG(),i.defaultUnit(),prep(i.preparationType()),i.servingGrams(),uid(email),true,writeMicros(i.micros())));
   return foodDto(f);
+ }
+
+ /** Edit a user's own custom food. Global seeded foods are read-only. */
+ @Transactional public NutritionModuleDtos.Food updateCustomFood(String email,Long id,NutritionModuleDtos.CustomFoodInput i){
+  Long owner=uid(email);
+  IndianFoodItem f=foods.findById(id).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"Food not found"));
+  if(!f.isCustom()||!owner.equals(f.getUserId())) throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Not your custom food");
+  f.update(i.name().trim(),i.calories(),i.proteinG(),i.carbsG(),i.fatG(),i.fiberG(),i.defaultUnit(),prep(i.preparationType()),i.servingGrams(),writeMicros(i.micros()));
+  return foodDto(foods.save(f));
+ }
+
+ /** Delete a user's own custom food. Diary history stores its own values, so past days are unaffected. */
+ @Transactional public void deleteCustomFood(String email,Long id){
+  Long owner=uid(email);
+  IndianFoodItem f=foods.findById(id).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"Food not found"));
+  if(!f.isCustom()||!owner.equals(f.getUserId())) throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Not your custom food");
+  foods.delete(f);
  }
 
  public NutritionModuleDtos.DiaryDay day(String email,LocalDate date){return day(uid(email),date);}

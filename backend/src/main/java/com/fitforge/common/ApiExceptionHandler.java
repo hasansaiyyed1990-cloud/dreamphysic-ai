@@ -97,8 +97,10 @@ public class ApiExceptionHandler {
             return ResponseEntity.badRequest().body(ApiResponse.error("A text field is too long"));
         }
         String detail = constraintDetail(ex, causeMessage);
-        return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(ApiResponse.error(detail.isBlank() ? "Conflicts with existing data" : "Conflicts with existing data: " + detail));
+        String message = detail.isBlank()
+                ? "Data conflict (database did not provide a constraint or field detail)"
+                : "Data conflict: " + detail;
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(message));
     }
 
     private static String constraintDetail(Throwable ex, String causeMessage) {

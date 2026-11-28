@@ -18,10 +18,10 @@ import { getLocalIstDateString } from '../../shared/date.js';
 import { CircularProgress, MacroBar, Spinner, ErrorMsg } from '../../shared/ui.jsx';
 
 const DEFAULT_HABITS = [
-  { id: 'water', label: '3.5L Water' },
+  { id: 'protein', label: 'Protein Target' },
   { id: 'creatine', label: '3g Creatine' },
+  { id: 'water', label: '3.5L Water' },
   { id: 'sleep', label: '7.5h Sleep' },
-  { id: 'weighin', label: 'Weight Check-in' },
 ];
 
 const HabitRow = memo(({ habit, checked, onToggle }) => (
@@ -55,6 +55,8 @@ export default function HomeView({ onNavigate }) {
   const [diary, setDiary] = useState(null);
   const [mission, setMission] = useState(null);
   const [hydration, setHydration] = useState({ waterMl: 0, waterGoalMl: 3500 });
+  const [cardioBurn, setCardioBurn] = useState(0);
+  const [strengthBurn, setStrengthBurn] = useState(0);
   const [loading, setLoading] = useState(true);
   const [waterSaving, setWaterSaving] = useState(false);
   const [error, setError] = useState('');
@@ -71,11 +73,13 @@ export default function HomeView({ onNavigate }) {
     setLoading(true);
     setError('');
     try {
-      const [ap, d, m, h] = await Promise.allSettled([
+      const [ap, d, m, h, c, w] = await Promise.allSettled([
         api('/autopilot/today', { signal }),
         api(`/nutrition/diary/${today}`, { signal }),
         api('/nutrition/mission', { signal }),
         api(`/nutrition/hydration/${today}`, { signal }),
+        api('/cardio', { signal }),
+        api('/workouts', { signal }),
       ]);
       if (ap.status === 'fulfilled') setAutopilot(ap.value);
       if (d.status === 'fulfilled') setDiary(d.value);
@@ -85,6 +89,18 @@ export default function HomeView({ onNavigate }) {
           waterMl: h.value.waterMl ?? 0,
           waterGoalMl: h.value.waterGoalMl ?? 3500,
         });
+      }
+      if (c.status === 'fulfilled' && Array.isArray(c.value)) {
+        const todayCardio = c.value
+          .filter((x) => String(x.sessionDate || x.date || '').startsWith(today))
+          .reduce((sum, x) => sum + Number(x.caloriesBurned || 0), 0);
+        setCardioBurn(Math.round(todayCardio));
+      }
+      if (w.status === 'fulfilled' && Array.isArray(w.value)) {
+        const todaySets = w.value
+          .filter((s) => String(s.sessionDate || s.startedAt || '').startsWith(today))
+          .reduce((sum, s) => sum + (Array.isArray(s.sets) ? s.sets.length : 0), 0);
+        setStrengthBurn(todaySets * 8);
       }
     } catch (e) {
       if (e.name !== 'AbortError') setError(e.message);
@@ -137,7 +153,10 @@ export default function HomeView({ onNavigate }) {
   const workoutTitle = workout?.split || 'Back Width & Thickness';
 
   const calGoal = mission?.dailyCalorieBudget || autopilot?.nutrition?.calorieTarget || 2200;
+  const maintenanceKcal = mission?.maintenanceCalories || 2300;
+  const totalBurn = maintenanceKcal + strengthBurn + cardioBurn;
   const calEaten = Math.round(diary?.calories ?? autopilot?.nutrition?.caloriesConsumed ?? 0);
+  const netBalance = calEaten - totalBurn; // negative = calorie deficit
   const calLeft = Math.max(0, calGoal - calEaten);
   const proteinTarget = Math.round(autopilot?.nutrition?.proteinTargetG || (calGoal * 0.3) / 4);
   const proteinEaten = Math.round(diary?.proteinG ?? autopilot?.nutrition?.proteinConsumedG ?? 0);
@@ -214,6 +233,18 @@ export default function HomeView({ onNavigate }) {
             <Flame size={15} className="text-gold" /> Today's Fuel &amp; Hydration
           </h3>
           <span className="text-[11px] text-teal font-semibold tab-num">{calLeft} kcal left</span>
+        </div>
+
+        <div
+          className="px-3 py-2 rounded-xl flex items-center justify-between text-xs tab-num"
+          style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}
+        >
+          <span className="text-muted">
+            Net Deficit: <strong className={netBalance <= 0 ? 'text-teal' : 'text-gold'}>{netBalance} kcal</strong>
+          </span>
+          <span className="text-[10px] text-muted">
+            Burn: {maintenanceKcal} + 💪{strengthBurn} + 🏃{cardioBurn}
+          </span>
         </div>
 
         <div className="flex items-center gap-4">

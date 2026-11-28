@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Utensils, Camera, Search, Plus, Trash2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp,
   Droplets, Pencil, Copy, Download, Sparkles, Settings2, X, Check, AlertTriangle, ListPlus, Repeat,
@@ -41,10 +42,12 @@ const fmt = (n, digits = 0) => {
   const v = Number(n || 0);
   return digits ? v.toFixed(digits).replace(/\.0$/, '') : String(Math.round(v));
 };
+// Local date math: toISOString() UTC me convert karta hai, jisse IST me din ek-ek skip ho jaata tha.
+const toIsoDate = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const shiftDate = (iso, days) => {
   const d = new Date(`${iso}T00:00:00`);
   d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  return toIsoDate(d);
 };
 const dateLabel = (iso) => {
   const today = getLocalIstDateString();
@@ -107,12 +110,23 @@ export default function DietPage() {
   const [amount, setAmount] = useState({ mode: 'g', value: 100 });
   const [quick, setQuick] = useState({ name: '', calories: '', proteinG: '', carbsG: '', fatG: '', fiberG: '' });
   const [custom, setCustom] = useState({ name: '', defaultUnit: 'g', servingGrams: 100, calories: '', proteinG: '', carbsG: '', fatG: '', fiberG: '', micros: {} });
+  const [foodEdit, setFoodEdit] = useState(null); // user ke apne custom food ka edit form
 
   // Meals + targets editors
   const [catEditor, setCatEditor] = useState(null); // {id?, name, timeLabel}
   const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [targetsOpen, setTargetsOpen] = useState(false);
   const [targetDraft, setTargetDraft] = useState(null);
+  const [dialog, setDialog] = useState(null); // in-app prompt/confirm (WebView me window.prompt kaam nahi karta)
+  const sheetOpen = Boolean(addFor || categoriesOpen || targetsOpen || dialog);
+
+  // Sheet khuli ho to peeche ka page scroll lock karo (phone par sheet ke saath page hilta tha).
+  useEffect(() => {
+    if (!sheetOpen) return undefined;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [sheetOpen]);
 
   // Scan
   const scanRef = useRef(null);
@@ -298,6 +312,45 @@ export default function DietPage() {
     });
   }
 
+  async function saveFoodEdit() {
+    if (!foodEdit?.name?.trim()) { setError('Food ka naam likhein'); return; }
+    const micros = {};
+    Object.entries(foodEdit.micros || {}).forEach(([k, v]) => { if (Number(v)) micros[k] = Number(v); });
+    await run(async () => {
+      const saved = await api(`/nutrition/foods/${foodEdit.id}`, {
+        method: 'PUT',
+        body: {
+          name: foodEdit.name.trim(),
+          calories: Number(foodEdit.calories) || 0,
+          proteinG: Number(foodEdit.proteinG) || 0,
+          carbsG: Number(foodEdit.carbsG) || 0,
+          fatG: Number(foodEdit.fatG) || 0,
+          fiberG: Number(foodEdit.fiberG) || 0,
+          defaultUnit: foodEdit.defaultUnit || 'g',
+          preparationType: 'COOKED',
+          servingGrams: Number(foodEdit.servingGrams) || 100,
+          micros,
+        },
+      });
+      setFoodEdit(null);
+      await searchFoods(saved.name);
+    });
+  }
+
+  function deleteFood(food) {
+    setDialog({
+      mode: 'confirm',
+      title: `"${food.name}" delete karein?`,
+      message: 'Ye sirf aapka custom food library se hatega. Purane diary din apni values ke saath safe rehte hain.',
+      confirmLabel: 'Delete',
+      danger: true,
+      onConfirm: () => run(async () => {
+        await api(`/nutrition/foods/${food.id}`, { method: 'DELETE' });
+        await searchFoods(query || food.name);
+      }),
+    });
+  }
+
   async function removeEntry(id) {
     await run(async () => {
       await api(`/nutrition/diary/${id}`, { method: 'DELETE' });
@@ -319,11 +372,16 @@ export default function DietPage() {
   async function deleteCategory(cat) {
     const target = categories.find(c => c.id !== cat.id);
     if (!target) { setError('Kam se kam ek meal category chahiye'); return; }
-    const ok = window.confirm(`"${cat.name}" delete karein? Uske foods "${target.name}" me move ho jayenge (history delete nahi hoti).`);
-    if (!ok) return;
-    await run(async () => {
-      await api(`/nutrition/categories/${cat.id}?moveTo=${target.id}`, { method: 'DELETE' });
-      await load();
+    setDialog({
+      mode: 'confirm',
+      title: `"${cat.name}" delete karein?`,
+      message: `Iske foods "${target.name}" me move ho jayenge. History delete nahi hoti.`,
+      confirmLabel: 'Delete',
+      danger: true,
+      onConfirm: () => run(async () => {
+        await api(`/nutrition/categories/${cat.id}?moveTo=${target.id}`, { method: 'DELETE' });
+        await load();
+      }),
     });
   }
 
@@ -354,21 +412,37 @@ export default function DietPage() {
     });
   }
 
-  async function copyMeal(cat) {
-    const targetCat = window.prompt(`"${cat}" ko kis meal me copy karein? Naam likhein:`, cat);
-    if (!targetCat) return;
-    await run(async () => {
-      await api('/nutrition/diary/copy-meal', { method: 'POST', body: { fromDate: date, fromCategory: cat, toDate: date, toCategory: targetCat } });
-      await load();
+  function copyMeal(cat) {
+    setDialog({
+      mode: 'prompt',
+      title: `Copy "${cat}"`,
+      label: 'Target meal ka naam likhein',
+      value: cat,
+      confirmLabel: 'Copy',
+      onConfirm: async (targetCat) => {
+        if (!targetCat?.trim()) return;
+        await run(async () => {
+          await api('/nutrition/diary/copy-meal', { method: 'POST', body: { fromDate: date, fromCategory: cat, toDate: date, toCategory: targetCat.trim() } });
+          await load();
+        });
+      },
     });
   }
 
-  async function copyDay() {
-    const toDate = window.prompt('Kis date par copy karein? (YYYY-MM-DD)', shiftDate(date, 1));
-    if (!toDate) return;
-    await run(async () => {
-      await api('/nutrition/diary/copy-day', { method: 'POST', body: { fromDate: date, toDate } });
-      setDate(toDate);
+  function copyDay() {
+    setDialog({
+      mode: 'prompt',
+      title: 'Copy day',
+      label: `"${dateLabel(date)}" ka pura din kis date par copy karein? (YYYY-MM-DD)`,
+      value: shiftDate(date, 1),
+      confirmLabel: 'Copy',
+      onConfirm: async (toDate) => {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(toDate || '')) { setError('Date YYYY-MM-DD format me daalein'); return; }
+        await run(async () => {
+          await api('/nutrition/diary/copy-day', { method: 'POST', body: { fromDate: date, toDate } });
+          setDate(toDate);
+        });
+      },
     });
   }
 
@@ -462,12 +536,16 @@ export default function DietPage() {
 
   if (loading) return <div className="flex items-center justify-center min-h-[80vh]"><Spinner size={36} /></div>;
 
-  const sheet = (content) => (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70" onClick={e => { if (e.target === e.currentTarget) content.onClose?.(); }}>
-      <div className="w-full max-w-md max-h-[88vh] overflow-y-auto rounded-t-3xl border-t border-teal/25 p-4 space-y-3" style={{ background: '#0b1220' }} onClick={e => e.stopPropagation()}>
+  // Sheets ko body me portal karo: page root par animate-fade-in ka transform hai, jo
+  // position:fixed ko page ke andar bound kar deta tha aur sheet bottom nav ke neeche chhup jaati thi.
+  // z-[70]: fixed bottom nav (z-50) ke upar. max-h dvh + safe-area padding: keyboard ke saath scroll ho kar sab fields milte hain.
+  const sheet = (content) => createPortal(
+    <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/70" onClick={e => { if (e.target === e.currentTarget) content.onClose?.(); }}>
+      <div className="w-full max-w-md max-h-[85dvh] overflow-y-auto overscroll-contain rounded-t-3xl border-t border-teal/25 p-4 pb-[calc(20px+var(--safe-bottom))] space-y-3" style={{ background: '#0b1220' }} onClick={e => e.stopPropagation()}>
         {content.body}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 
   return (
@@ -695,14 +773,16 @@ export default function DietPage() {
 
               <GlassCard>
                 <p className="text-white text-xs font-semibold mb-2">Daily calories</p>
-                <div className="flex items-end gap-1 h-24">
-                  {(analytics.dailyBreakdown || []).slice(-60).map(d => {
-                    const max = Math.max(calTarget, ...analytics.dailyBreakdown.map(x => x.calories || 0), 1);
-                    const h = Math.max(2, Math.round(((d.calories || 0) / max) * 100));
-                    return <div key={d.date} title={`${d.date}: ${fmt(d.calories)} kcal`} className={`flex-1 rounded-t ${d.calories > calTarget ? 'bg-orange-400' : 'bg-teal/70'}`} style={{ height: `${h}%` }} />;
-                  })}
+                <div className="overflow-x-auto no-scrollbar -mx-1 px-1">
+                  <div className="flex items-end gap-1 h-24" style={{ minWidth: `${Math.min(60, (analytics.dailyBreakdown || []).length) * 7}px` }}>
+                    {(analytics.dailyBreakdown || []).slice(-60).map(d => {
+                      const max = Math.max(calTarget, ...analytics.dailyBreakdown.map(x => x.calories || 0), 1);
+                      const h = Math.max(2, Math.round(((d.calories || 0) / max) * 100));
+                      return <div key={d.date} title={`${d.date}: ${fmt(d.calories)} kcal`} className={`w-1.5 shrink-0 rounded-t ${d.calories > calTarget ? 'bg-orange-400' : 'bg-teal/70'}`} style={{ height: `${h}%` }} />;
+                    })}
+                  </div>
                 </div>
-                <p className="text-muted text-[10px] mt-1">Orange = target se upar</p>
+                <p className="text-muted text-[10px] mt-1">Orange = target se upar · graph side me scroll hota hai</p>
               </GlassCard>
 
               <GlassCard>
@@ -874,16 +954,76 @@ export default function DietPage() {
                       <GhostButton onClick={() => setPick(null)} className="text-xs py-2 px-3">Back</GhostButton>
                     </div>
                   </div>
+                ) : foodEdit ? (
+                  <div className="p-3 rounded-xl border border-teal/25 bg-teal/5 space-y-2">
+                    <p className="text-white text-sm font-semibold">Edit custom food</p>
+                    <input
+                      value={foodEdit.name}
+                      onChange={e => setFoodEdit(f => ({ ...f, name: e.target.value }))}
+                      placeholder="Food name"
+                      className="w-full px-3 py-2 rounded-lg text-white text-sm outline-none"
+                      style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      {[['defaultUnit', 'Serving unit'], ['servingGrams', 'Serving grams'], ['calories', 'Calories / serving'], ['proteinG', 'Protein g'], ['carbsG', 'Carbs g'], ['fatG', 'Fat g'], ['fiberG', 'Fiber g']].map(([k, l]) => (
+                        <label key={k} className="block">
+                          <span className="text-muted text-[10px]">{l}</span>
+                          <input
+                            value={foodEdit[k] ?? ''}
+                            onChange={e => setFoodEdit(f => ({ ...f, [k]: e.target.value }))}
+                            className="w-full px-2 py-1.5 rounded-lg text-white text-sm outline-none"
+                            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
+                          />
+                        </label>
+                      ))}
+                    </div>
+                    <details className="rounded-lg border border-white/10 p-2">
+                      <summary className="text-muted text-[11px] cursor-pointer">Micronutrients (optional)</summary>
+                      <div className="grid grid-cols-2 gap-2 mt-2">
+                        {MICRO_INPUTS.map(([k, l]) => (
+                          <label key={k} className="block">
+                            <span className="text-muted text-[10px]">{l}</span>
+                            <input
+                              value={foodEdit.micros?.[k] ?? ''}
+                              onChange={e => setFoodEdit(f => ({ ...f, micros: { ...(f.micros || {}), [k]: e.target.value } }))}
+                              className="w-full px-2 py-1.5 rounded-lg text-white text-sm outline-none"
+                              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
+                            />
+                          </label>
+                        ))}
+                      </div>
+                    </details>
+                    <div className="flex gap-2">
+                      <TealButton onClick={saveFoodEdit} disabled={busy} className="flex-1 text-xs py-2">Save changes</TealButton>
+                      <GhostButton onClick={() => setFoodEdit(null)} className="text-xs py-2 px-3">Cancel</GhostButton>
+                    </div>
+                  </div>
                 ) : (
                   <div className="space-y-1">
                     {results.map(food => (
-                      <button key={food.id} onClick={() => { setPick(food); setAmount({ mode: 'g', value: Number(food.servingGrams) || 100 }); }} className="w-full flex items-center gap-2 p-2 rounded-lg bg-white/5 text-left">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-white text-xs font-semibold truncate">{food.name}{food.isCustom ? ' · custom' : ''}</p>
-                          <p className="text-muted text-[10px]">{fmt(food.calories)} kcal/100g · P {fmt(food.proteinG, 1)} · {food.preparationType.toLowerCase()}</p>
-                        </div>
-                        <Plus size={12} className="text-teal" />
-                      </button>
+                      <div key={food.id} className="flex items-center gap-1 p-2 rounded-lg bg-white/5">
+                        <button onClick={() => { setPick(food); setAmount({ mode: 'g', value: Number(food.servingGrams) || 100 }); }} className="flex-1 flex items-center gap-2 text-left min-w-0">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-white text-xs font-semibold truncate">{food.name}{food.isCustom ? ' · custom' : ''}</p>
+                            <p className="text-muted text-[10px]">{fmt(food.calories)} kcal/100g · P {fmt(food.proteinG, 1)} · {food.preparationType.toLowerCase()}</p>
+                          </div>
+                          <Plus size={12} className="text-teal shrink-0" />
+                        </button>
+                        {food.isCustom && (
+                          <>
+                            <button
+                              onClick={() => setFoodEdit({ id: food.id, name: food.name, defaultUnit: food.defaultUnit || 'g', servingGrams: food.servingGrams, calories: food.calories, proteinG: food.proteinG, carbsG: food.carbsG, fatG: food.fatG, fiberG: food.fiberG, micros: food.micros || {} })}
+                              aria-label={`Edit ${food.name}`}
+                              className="w-7 h-7 rounded-full bg-white/5 border border-white/10 flex items-center justify-center shrink-0"
+                            ><Pencil size={11} className="text-muted" /></button>
+                            <button
+                              onClick={() => deleteFood(food)}
+                              aria-label={`Delete ${food.name}`}
+                              className="w-7 h-7 rounded-full bg-white/5 border border-white/10 flex items-center justify-center shrink-0"
+                            ><Trash2 size={11} className="text-red-300/80" /></button>
+                          </>
+                        )}
+                      </div>
                     ))}
                     {results.length === 0 && <p className="text-muted text-xs py-3 text-center">Search karo (e.g. "dal", "chicken") ya naya food banao.</p>}
                   </div>
@@ -940,6 +1080,38 @@ export default function DietPage() {
                 </div>
               </div>
             )}
+          </>
+        ),
+      })}
+
+      {/* In-app prompt / confirm (Android WebView me window.prompt/confirm reliable nahi hote) */}
+      {dialog && sheet({
+        onClose: () => setDialog(null),
+        body: (
+          <>
+            <p className="text-white font-bold">{dialog.title}</p>
+            {dialog.message && <p className="text-muted text-xs">{dialog.message}</p>}
+            {dialog.mode === 'prompt' && (
+              <>
+                {dialog.label && <p className="text-muted text-[11px]">{dialog.label}</p>}
+                <input
+                  autoFocus
+                  value={dialog.value || ''}
+                  onChange={e => setDialog(d => ({ ...d, value: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-lg text-white text-sm outline-none"
+                  style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
+                />
+              </>
+            )}
+            <div className="flex gap-2">
+              <TealButton
+                onClick={() => { const d = dialog; setDialog(null); d.onConfirm?.(d.value); }}
+                className={`flex-1 text-xs py-2 ${dialog.danger ? '!bg-red-500 !text-white' : ''}`}
+              >
+                {dialog.confirmLabel || 'OK'}
+              </TealButton>
+              <GhostButton onClick={() => setDialog(null)} className="text-xs py-2 px-3">Cancel</GhostButton>
+            </div>
           </>
         ),
       })}
